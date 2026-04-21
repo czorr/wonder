@@ -29,11 +29,12 @@ type SandboxProps = {
   onTextEdit?: (
     evt: Extract<SandboxIncoming, { type: "sandbox:textEdit" }>,
   ) => void;
+  onSize?: (evt: Extract<SandboxIncoming, { type: "sandbox:size" }>) => void;
   className?: string;
 };
 
 export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
-  { onReady, onRendered, onError, onSelect, onHover, onRect, onTextEdit, className },
+  { onReady, onRendered, onError, onSelect, onHover, onRect, onTextEdit, onSize, className },
   ref,
 ) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -75,11 +76,14 @@ export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
         case "sandbox:textEdit":
           onTextEdit?.(data);
           break;
+        case "sandbox:size":
+          onSize?.(data);
+          break;
       }
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [onReady, onRendered, onError, onSelect, onHover, onRect, onTextEdit]);
+  }, [onReady, onRendered, onError, onSelect, onHover, onRect, onTextEdit, onSize]);
 
   useImperativeHandle(
     ref,

@@ -28,7 +28,8 @@
         min-height: 100%;
       }
       #root {
-        padding: 16px;
+        padding: 0;
+        display: inline-block;
       }
       #error {
         display: none;
@@ -116,14 +117,30 @@
         );
       }
 
+      const rootEl = document.getElementById("root");
+
       const observer = new MutationObserver(() => {
         if (selectedPath) emitRect(selectedPath);
       });
-      observer.observe(document.getElementById("root"), {
+      observer.observe(rootEl, {
         childList: true,
         subtree: true,
         attributes: true,
       });
+
+      function emitSize() {
+        const r = rootEl.getBoundingClientRect();
+        parent.postMessage(
+          {
+            type: "sandbox:size",
+            width: Math.ceil(r.width),
+            height: Math.ceil(r.height),
+          },
+          "*",
+        );
+      }
+      const sizeObserver = new ResizeObserver(() => emitSize());
+      sizeObserver.observe(rootEl);
 
       window.addEventListener("message", async (e) => {
         const msg = e.data;

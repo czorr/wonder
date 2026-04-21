@@ -33,7 +33,8 @@ export type SandboxIncoming =
       path: string;
       rect: Rect;
       text: string;
-    };
+    }
+  | { type: "sandbox:size"; width: number; height: number };
 
 export type SandboxOutgoing =
   | { type: "sandbox:render"; code: string; props?: Record<string, unknown> }

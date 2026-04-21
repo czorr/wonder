@@ -175,7 +175,7 @@ export function RightPanel() {
   const borderColor = colorName(currentBorderColor, "border");
 
   return (
-    <aside className="flex w-[320px] shrink-0 flex-col border-l border-stroke bg-panel text-[12px]">
+    <aside className="flex w-[320px] shrink-0 flex-col overflow-x-hidden border-l border-stroke bg-panel text-[12px]">
       <div className="flex h-9 items-center gap-4 border-b border-stroke px-3 text-[11px] font-medium">
         <PanelTab icon={Paintbrush} label="Design" active />
         <PanelTab icon={Code2} label="Props" />
@@ -489,8 +489,8 @@ function DualRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[54px_1fr_1fr] items-center gap-1.5">
-      <span className="text-[10.5px] text-ink-muted">{label}</span>
+    <div className="grid min-w-0 grid-cols-[46px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-1.5">
+      <span className="truncate text-[10.5px] text-ink-muted">{label}</span>
       {children}
     </div>
   );

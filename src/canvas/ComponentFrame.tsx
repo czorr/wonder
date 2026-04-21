@@ -31,6 +31,7 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [sel, setSel] = useState<SelectionInfo | null>(null);
   const [edit, setEdit] = useState<TextEdit | null>(null);
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const selectComponent = useProject((s) => s.selectComponent);
   const selectElement = useProject((s) => s.selectElement);
   const selectedElementPath = useProject((s) => s.selectedElementPath);
@@ -99,8 +100,8 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
       style={{
         left: component.x,
         top: component.y,
-        width: component.width,
-        height: component.height,
+        width: size?.w ?? component.width,
+        height: size?.h ?? component.height,
       }}
       onMouseDown={() => selectComponent(component.id)}
     >
@@ -115,15 +116,11 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
       >
         <span>{component.name}</span>
         <span className={selected ? "opacity-80" : "text-ink-faint"}>
-          {Math.round(component.width)} × {Math.round(component.height)}
+          {Math.round(size?.w ?? component.width)} ×{" "}
+          {Math.round(size?.h ?? component.height)}
         </span>
       </div>
-      <div
-        className={
-          "relative h-full w-full overflow-hidden rounded-xl border bg-white " +
-          (selected ? "border-stroke-strong" : "border-stroke")
-        }
-      >
+      <div className="relative h-full w-full overflow-visible">
         <Sandbox
           ref={sandboxRef}
           onReady={() => setReady(true)}
@@ -155,6 +152,7 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
             selectElement(evt.path);
             setEdit({ path: evt.path, rect: evt.rect, text: evt.text.trim() });
           }}
+          onSize={(evt) => setSize({ w: evt.width, h: evt.height })}
           className="h-full w-full border-0"
         />
         {err ? (
