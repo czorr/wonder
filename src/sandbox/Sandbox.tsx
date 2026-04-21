@@ -132,6 +132,7 @@ export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
       src="/sandbox-runtime.html"
       title="Wonder sandbox"
       sandbox="allow-scripts allow-same-origin"
+      scrolling="no"
       className={className}
       style={style}
     />

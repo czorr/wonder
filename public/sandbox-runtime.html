@@ -26,6 +26,8 @@
         padding: 0;
         background: transparent;
         min-height: 100%;
+        min-width: max-content;
+        overflow: hidden;
       }
       #root {
         padding: 0;
@@ -136,8 +138,8 @@
         parent.postMessage(
           {
             type: "sandbox:size",
-            width: Math.ceil(r.width),
-            height: Math.ceil(r.height),
+            width: Math.ceil(r.width) + 1,
+            height: Math.ceil(r.height) + 1,
           },
           "*",
         );

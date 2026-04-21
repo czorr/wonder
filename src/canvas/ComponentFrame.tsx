@@ -123,7 +123,7 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
           {size ? `${Math.round(size.w)} × ${Math.round(size.h)}` : ""}
         </span>
       </div>
-      <div className="relative h-full w-full overflow-hidden">
+      <div className="relative h-full w-full">
         <Sandbox
           ref={sandboxRef}
           onReady={() => setReady(true)}
@@ -166,7 +166,11 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
             if (!draggingRef.current) setSize({ w: evt.width, h: evt.height });
           }}
           className="absolute left-0 top-0 border-0"
-          style={{ width: 2000, height: 1200, background: "transparent" }}
+          style={{
+            width: size?.w ?? 2000,
+            height: size?.h ?? 1200,
+            background: "transparent",
+          }}
         />
         {err ? (
           <pre className="absolute inset-2 overflow-auto rounded-md border border-red-300 bg-red-50 p-2 text-[10px] text-red-700">

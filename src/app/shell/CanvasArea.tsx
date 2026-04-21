@@ -144,12 +144,16 @@ export function CanvasArea() {
         }}
       />
 
-      {/* Canvas content — translate for pan, CSS zoom for scale (keeps iframes crisp) */}
+      {/* Canvas content — pan via translate, scale via transform (transform:scale avoids
+          the subpixel clipping bugs CSS `zoom` causes with iframes in WebKit/Tauri). */}
       <div
         className="absolute left-0 top-0"
-        style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}
+        style={{
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+          transformOrigin: "0 0",
+        }}
       >
-        <div style={{ zoom }}>
+        <div>
         {order.map((id) => {
           const c = components[id];
           if (!c) return null;
