@@ -2,6 +2,7 @@ import {
   Undo2,
   Redo2,
   MousePointer2,
+  Hand,
   Frame,
   Square,
   Type,
@@ -24,6 +25,8 @@ export function Topbar() {
   const zoomOut = useCanvas((s) => s.zoomOut);
   const zoomReset = useCanvas((s) => s.zoomReset);
   const openPreview = useCanvas((s) => s.openPreview);
+  const tool = useCanvas((s) => s.tool);
+  const setTool = useCanvas((s) => s.setTool);
 
   const components = useProject((s) => s.components);
   const selectedId = useProject((s) => s.selectedComponentId);
@@ -65,8 +68,11 @@ export function Topbar() {
         </div>
         <div className="h-5 w-px bg-stroke" />
         <div className="flex items-center gap-0.5">
-          <IconBtn active>
+          <IconBtn active={tool === "select"} onClick={() => setTool("select")} title="Select (V)">
             <MousePointer2 size={15} strokeWidth={1.75} />
+          </IconBtn>
+          <IconBtn active={tool === "hand"} onClick={() => setTool("hand")} title="Hand / Pan (H, hold Space)">
+            <Hand size={15} strokeWidth={1.75} />
           </IconBtn>
           <IconBtn><Frame size={15} strokeWidth={1.75} /></IconBtn>
           <IconBtn><Square size={15} strokeWidth={1.75} /></IconBtn>
@@ -149,12 +155,18 @@ export function Topbar() {
 function IconBtn({
   children,
   active,
+  onClick,
+  title,
 }: {
   children: React.ReactNode;
   active?: boolean;
+  onClick?: () => void;
+  title?: string;
 }) {
   return (
     <button
+      onClick={onClick}
+      title={title}
       className={
         "grid size-7 place-items-center rounded-md transition " +
         (active

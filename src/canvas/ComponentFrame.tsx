@@ -96,7 +96,7 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
         width: size?.w ?? component.width,
         height: size?.h ?? component.height,
       }}
-      onMouseDown={() => selectComponent(component.id)}
+      onMouseDown={(e) => { if (e.button === 0) selectComponent(component.id); }}
     >
       <div
         onMouseDown={onMouseDownHeader}
