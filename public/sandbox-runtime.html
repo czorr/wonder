@@ -86,7 +86,13 @@
           clearError();
           root.render(React.createElement(Component, currentProps));
           parent.postMessage({ type: "sandbox:rendered" }, "*");
-          requestAnimationFrame(() => emitSize());
+          requestAnimationFrame(() => {
+            emitSize();
+            if (selectedPath) {
+              emitRect(selectedPath);
+              watchSelected(selectedPath);
+            }
+          });
         } catch (err) {
           showError(String(err?.stack || err));
           parent.postMessage(
@@ -133,6 +139,21 @@
         attributes: true,
       });
 
+      // Track the selected element's size so the selection overlay follows it
+      // across reflows (font load, flex recompute, viewport changes, etc.).
+      let selectedResizeObserver = null;
+      function watchSelected(path) {
+        if (selectedResizeObserver) {
+          selectedResizeObserver.disconnect();
+          selectedResizeObserver = null;
+        }
+        if (!path) return;
+        const el = document.querySelector(`[data-wonder-path="${CSS.escape(path)}"]`);
+        if (!el) return;
+        selectedResizeObserver = new ResizeObserver(() => emitRect(path));
+        selectedResizeObserver.observe(el);
+      }
+
       function emitSize() {
         const r = rootEl.getBoundingClientRect();
         parent.postMessage(
@@ -177,7 +198,10 @@
           if (CurrentComponent) render(CurrentComponent);
         } else if (msg.type === "sandbox:setSelection") {
           selectedPath = msg.path;
-          requestAnimationFrame(() => emitRect(selectedPath));
+          requestAnimationFrame(() => {
+            emitRect(selectedPath);
+            watchSelected(selectedPath);
+          });
         } else if (msg.type === "sandbox:setViewport") {
           if (msg.width != null) {
             document.body.style.width = msg.width + "px";
@@ -201,6 +225,8 @@
           e.preventDefault();
           e.stopPropagation();
           const path = el.getAttribute("data-wonder-path");
+          selectedPath = path;
+          watchSelected(path);
           parent.postMessage(
             {
               type: "sandbox:select",
