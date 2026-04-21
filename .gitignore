@@ -1,0 +1,23 @@
+node_modules
+dist
+dist-ssr
+.tsbuildinfo-node
+*.tsbuildinfo
+.DS_Store
+.env
+.env.local
+.env.*.local
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Tauri / Rust
+src-tauri/target
+src-tauri/gen
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*

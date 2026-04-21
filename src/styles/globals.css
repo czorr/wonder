@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: oklch(0.16 0.01 270);
+  --color-panel: oklch(0.2 0.01 270);
+  --color-border: oklch(0.28 0.01 270);
+  --color-fg: oklch(0.96 0.01 270);
+  --color-muted: oklch(0.62 0.02 270);
+  --color-accent: oklch(0.72 0.18 290);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
