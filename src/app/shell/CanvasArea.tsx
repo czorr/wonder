@@ -8,6 +8,7 @@ export function CanvasArea() {
   const components = useProject((s) => s.components);
   const selectedId = useProject((s) => s.selectedComponentId);
   const selectComponent = useProject((s) => s.selectComponent);
+  const deleteComponent = useProject((s) => s.deleteComponent);
 
   const zoom = useCanvas((s) => s.zoom);
   const pan = useCanvas((s) => s.pan);
@@ -74,6 +75,17 @@ export function CanvasArea() {
         if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
         setTool("hand");
       }
+      if (e.key === "Backspace" || e.key === "Delete") {
+        const t = e.target as HTMLElement | null;
+        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+        if (t && typeof t.closest === "function" && t.closest(".monaco-editor")) return;
+        // Only delete component when the frame itself (not a child element) is selected.
+        const { selectedComponentId, selectedElementPath } = useProject.getState();
+        if (selectedComponentId && (!selectedElementPath || selectedElementPath === "0")) {
+          e.preventDefault();
+          deleteComponent(selectedComponentId);
+        }
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space") setSpaceHeld(false);
@@ -84,7 +96,7 @@ export function CanvasArea() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [setTool]);
+  }, [setTool, deleteComponent]);
 
   const startPan = (startX: number, startY: number) => {
     setPanning(true);

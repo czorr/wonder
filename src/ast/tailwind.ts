@@ -39,6 +39,31 @@ export function getClassNameAtPath(
   return splitClasses(str);
 }
 
+export function removeClassesAtPath(
+  code: string,
+  path: WonderPath,
+  predicate: (c: string) => boolean,
+): string {
+  const ast = parseSource(code);
+  const root = findRootJSXElement(ast);
+  if (!root) return code;
+  const target = resolvePath(root, path);
+  if (!target) return code;
+  const attr = getJSXAttr(target, "className");
+  if (!attr) return code;
+  const v = attr.value;
+  let literal: t.StringLiteral;
+  if (t.isStringLiteral(v)) literal = v;
+  else if (
+    t.isJSXExpressionContainer(v) &&
+    t.isStringLiteral(v.expression)
+  ) literal = v.expression;
+  else return code;
+  const next = splitClasses(literal.value).filter((c) => !predicate(c));
+  literal.value = next.join(" ");
+  return printSource(ast);
+}
+
 export function setClassAtPath(
   code: string,
   path: WonderPath,

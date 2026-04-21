@@ -3,8 +3,10 @@ import { Sandbox, type SandboxHandle } from "@/sandbox/Sandbox";
 import { bundle } from "@/sandbox/bundler";
 import { HOT_RELOAD_DEBOUNCE_MS } from "@/constants";
 import { useProject, type WonderComponent } from "@/store/project";
+import { useMetrics } from "@/store/metrics";
 import type { Rect } from "@/sandbox/messaging";
 import { setTextAtPath } from "@/ast/text";
+import { getClassNameAtPath, setClassAtPath } from "@/ast/tailwind";
 
 type Props = {
   component: WonderComponent;
@@ -26,12 +28,16 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
   const [sel, setSel] = useState<SelectionInfo | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const editingPath = useRef<string | null>(null);
+  const draggingRef = useRef(false);
   const selectComponent = useProject((s) => s.selectComponent);
   const selectElement = useProject((s) => s.selectElement);
   const selectedElementPath = useProject((s) => s.selectedElementPath);
   const moveFrame = useProject((s) => s.moveFrame);
   const resizeFrame = useProject((s) => s.resizeFrame);
   const setSource = useProject((s) => s.setSource);
+  const propValues = useProject((s) => s.propValues[component.id]);
+  const setRootSize = useMetrics((s) => s.setRootSize);
+  const setSelectedRect = useMetrics((s) => s.setSelectedRect);
 
   useEffect(() => {
     if (!ready) return;
@@ -42,10 +48,15 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
         setErr(res.error);
         return;
       }
-      sandboxRef.current?.render(res.code);
+      sandboxRef.current?.render(res.code, propValues ?? {});
     }, HOT_RELOAD_DEBOUNCE_MS);
     return () => window.clearTimeout(id);
   }, [component.source, ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+    sandboxRef.current?.setProps(propValues ?? {});
+  }, [propValues, ready]);
 
   useEffect(() => {
     if (!ready) return;
@@ -93,8 +104,8 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
       style={{
         left: component.x,
         top: component.y,
-        width: size?.w ?? component.width,
-        height: size?.h ?? component.height,
+        width: size?.w,
+        height: size?.h,
       }}
       onMouseDown={(e) => { if (e.button === 0) selectComponent(component.id); }}
     >
@@ -109,8 +120,7 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
       >
         <span>{component.name}</span>
         <span className={selected ? "opacity-80" : "text-ink-faint"}>
-          {Math.round(size?.w ?? component.width)} ×{" "}
-          {Math.round(size?.h ?? component.height)}
+          {size ? `${Math.round(size.w)} × ${Math.round(size.h)}` : ""}
         </span>
       </div>
       <div className="relative h-full w-full overflow-hidden">
@@ -127,6 +137,7 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
               tag: evt.tag,
               className: evt.className,
             });
+            setSelectedRect(component.id, evt.path, evt.rect.width, evt.rect.height);
           }}
           onRect={(evt) => {
             if (!evt.rect) {
@@ -139,6 +150,7 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
               tag: evt.tag,
               className: evt.className,
             });
+            setSelectedRect(component.id, evt.path, evt.rect.width, evt.rect.height);
           }}
           onTextEdit={(evt) => {
             selectComponent(component.id);
@@ -149,7 +161,10 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
             commitText(evt.path, evt.text);
             editingPath.current = null;
           }}
-          onSize={(evt) => setSize({ w: evt.width, h: evt.height })}
+          onSize={(evt) => {
+            setRootSize(component.id, { w: evt.width, h: evt.height });
+            if (!draggingRef.current) setSize({ w: evt.width, h: evt.height });
+          }}
           className="absolute left-0 top-0 border-0"
           style={{ width: 2000, height: 1200, background: "transparent" }}
         />
@@ -166,10 +181,27 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
           size={size}
           zoom={zoom}
           sandboxRef={sandboxRef}
+          onDragStart={() => { draggingRef.current = true; }}
           onResize={(x, y, w, h) => {
             setSize({ w, h });
             sandboxRef.current?.setViewport(w);
-            resizeFrame(component.id, x, y, w, h);
+            moveFrame(component.id, x, y);
+          }}
+          onCommit={(w) => {
+            try {
+              let src = component.source;
+              const classes = getClassNameAtPath(src, "0");
+              const curW = classes.find((c) => /^w-/.test(c));
+              const nextW = `w-[${Math.round(w)}px]`;
+              if (curW !== nextW) src = setClassAtPath(src, "0", curW ?? "", nextW);
+              setSource(component.id, src);
+              sandboxRef.current?.setViewport(null);
+              draggingRef.current = false;
+              setSize(null);
+            } catch (e) {
+              console.error(e);
+              draggingRef.current = false;
+            }
           }}
         />
       )}
@@ -218,7 +250,9 @@ type ResizeHandlesProps = {
   size: { w: number; h: number } | null;
   zoom: number;
   sandboxRef: React.RefObject<SandboxHandle | null>;
+  onDragStart: () => void;
   onResize: (x: number, y: number, w: number, h: number) => void;
+  onCommit: (w: number, h: number) => void;
 };
 
 const CURSORS = {
@@ -228,7 +262,7 @@ const CURSORS = {
   br: "se-resize",
 } as const;
 
-function ResizeHandles({ component, size, zoom, sandboxRef, onResize }: ResizeHandlesProps) {
+function ResizeHandles({ component, size, zoom, sandboxRef, onDragStart, onResize, onCommit }: ResizeHandlesProps) {
   const w = size?.w ?? component.width;
   const h = size?.h ?? component.height;
 
@@ -236,6 +270,7 @@ function ResizeHandles({ component, size, zoom, sandboxRef, onResize }: ResizeHa
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+    onDragStart();
     const startX = e.clientX;
     const startY = e.clientY;
     const origX = component.x;
@@ -243,6 +278,7 @@ function ResizeHandles({ component, size, zoom, sandboxRef, onResize }: ResizeHa
     const origW = w;
     const origH = h;
 
+    let last = { w: origW, h: origH };
     const onMove = (ev: MouseEvent) => {
       const dx = (ev.clientX - startX) / zoom;
       const dy = (ev.clientY - startY) / zoom;
@@ -251,12 +287,14 @@ function ResizeHandles({ component, size, zoom, sandboxRef, onResize }: ResizeHa
       if (corner === "bl") { nx = origX + dx; nw = Math.max(80, origW - dx); nh = Math.max(40, origH + dy); }
       if (corner === "tr") { ny = origY + dy; nw = Math.max(80, origW + dx); nh = Math.max(40, origH - dy); }
       if (corner === "tl") { nx = origX + dx; ny = origY + dy; nw = Math.max(80, origW - dx); nh = Math.max(40, origH - dy); }
+      last = { w: nw, h: nh };
       sandboxRef.current?.setViewport(nw);
       onResize(nx, ny, nw, nh);
     };
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      onCommit(last.w, last.h);
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);

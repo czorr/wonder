@@ -21,6 +21,7 @@ type State = {
   selectedElementPath: string | null;
   openTabs: ComponentId[];
   activeTab: ComponentId | null;
+  propValues: Record<ComponentId, Record<string, string>>;
 
   selectComponent: (id: ComponentId | null) => void;
   selectElement: (path: string | null) => void;
@@ -30,7 +31,31 @@ type State = {
   openTab: (id: ComponentId) => void;
   closeTab: (id: ComponentId) => void;
   setActiveTab: (id: ComponentId) => void;
+  setPropValue: (id: ComponentId, name: string, value: string) => void;
+  clearPropValue: (id: ComponentId, name: string) => void;
+  addComponent: (c: Omit<WonderComponent, "id"> & { id?: ComponentId }) => ComponentId;
+  deleteComponent: (id: ComponentId) => void;
 };
+
+function slugify(s: string): string {
+  return s.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function uniqueId(base: string, taken: Record<string, unknown>): string {
+  const slug = slugify(base) || "component";
+  if (!(slug in taken)) return slug;
+  let i = 2;
+  while (`${slug}-${i}` in taken) i++;
+  return `${slug}-${i}`;
+}
+
+function uniqueName(base: string, components: Record<string, WonderComponent>): string {
+  const names = new Set(Object.values(components).map((c) => c.name));
+  if (!names.has(base)) return base;
+  let i = 2;
+  while (names.has(`${base}${i}`)) i++;
+  return `${base}${i}`;
+}
 
 const STAT_TILE = `import { TrendingUp, DollarSign } from "lucide-react";
 
@@ -168,6 +193,7 @@ export const useProject = create<State>((set) => ({
   selectedElementPath: "0",
   openTabs: ["stat-tile"],
   activeTab: "stat-tile",
+  propValues: {},
 
   selectComponent(id) {
     set((s) => ({
@@ -225,5 +251,70 @@ export const useProject = create<State>((set) => ({
   },
   setActiveTab(id) {
     set({ activeTab: id, selectedComponentId: id, selectedElementPath: "0" });
+  },
+  setPropValue(id, name, value) {
+    set((s) => ({
+      propValues: {
+        ...s.propValues,
+        [id]: { ...(s.propValues[id] ?? {}), [name]: value },
+      },
+    }));
+  },
+  clearPropValue(id, name) {
+    set((s) => {
+      const cur = { ...(s.propValues[id] ?? {}) };
+      delete cur[name];
+      return { propValues: { ...s.propValues, [id]: cur } };
+    });
+  },
+  addComponent(partial) {
+    let createdId: ComponentId = partial.id ?? "";
+    set((s) => {
+      const name = uniqueName(partial.name, s.components);
+      const id = partial.id && !(partial.id in s.components)
+        ? partial.id
+        : uniqueId(name, s.components);
+      createdId = id;
+      const comp: WonderComponent = {
+        id,
+        name,
+        filename: partial.filename || `${name}.tsx`,
+        folder: partial.folder || "components",
+        source: partial.source,
+        x: partial.x,
+        y: partial.y,
+        width: partial.width,
+        height: partial.height,
+      };
+      return {
+        components: { ...s.components, [id]: comp },
+        order: [...s.order, id],
+        selectedComponentId: id,
+        selectedElementPath: "0",
+        openTabs: s.openTabs.includes(id) ? s.openTabs : [...s.openTabs, id],
+        activeTab: id,
+      };
+    });
+    return createdId;
+  },
+  deleteComponent(id) {
+    set((s) => {
+      if (!(id in s.components)) return s;
+      const { [id]: _removed, ...rest } = s.components;
+      const order = s.order.filter((x) => x !== id);
+      const openTabs = s.openTabs.filter((x) => x !== id);
+      const { [id]: _pv, ...propValues } = s.propValues;
+      const selectedComponentId = s.selectedComponentId === id ? null : s.selectedComponentId;
+      const activeTab = s.activeTab === id ? (openTabs[openTabs.length - 1] ?? null) : s.activeTab;
+      return {
+        components: rest,
+        order,
+        openTabs,
+        propValues,
+        selectedComponentId,
+        selectedElementPath: selectedComponentId ? s.selectedElementPath : null,
+        activeTab,
+      };
+    });
   },
 }));

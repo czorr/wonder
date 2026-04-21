@@ -5,28 +5,41 @@ import {
   FileCode2,
   FolderClosed,
   Plus,
-  Square,
-  RectangleHorizontal,
-  TextCursorInput,
-  Type,
-  Image as ImageIcon,
-  Sparkles,
-  Rows3,
-  LayoutGrid,
-  LayoutTemplate,
   Files,
   Library as LibraryIcon,
   Boxes,
+  Trash2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useProject, type WonderComponent } from "@/store/project";
+import { useCanvas } from "@/store/canvas";
+import { PRIMITIVES, buildComponentSource, type Primitive } from "@/primitives/snippets";
+import { insertChildAtPath } from "@/ast/insert";
 
 export function LeftSidebar() {
   const order = useProject((s) => s.order);
   const components = useProject((s) => s.components);
   const selectedId = useProject((s) => s.selectedComponentId);
+  const selectedPath = useProject((s) => s.selectedElementPath);
   const selectComponent = useProject((s) => s.selectComponent);
+  const addComponent = useProject((s) => s.addComponent);
+  const deleteComponent = useProject((s) => s.deleteComponent);
+  const setSource = useProject((s) => s.setSource);
+  const pan = useCanvas((s) => s.pan);
+  const zoom = useCanvas((s) => s.zoom);
+
+  const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    window.addEventListener("mousedown", close);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("resize", close);
+    };
+  }, [menu]);
 
   const folders = useMemo(() => {
     const map = new Map<string, WonderComponent[]>();
@@ -39,6 +52,53 @@ export function LeftSidebar() {
     }
     return Array.from(map.entries());
   }, [order, components]);
+
+  const spawnComponent = (p: Primitive) => {
+    const last = order.length ? components[order[order.length - 1]] : null;
+    const base = last
+      ? { x: last.x + last.width + 40, y: last.y }
+      : { x: Math.round(-pan.x / zoom) + 80, y: Math.round(-pan.y / zoom) + 80 };
+    addComponent({
+      name: p.componentName,
+      filename: `${p.componentName}.tsx`,
+      folder: "components",
+      source: buildComponentSource(p, p.componentName),
+      x: base.x,
+      y: base.y,
+      width: p.size.w,
+      height: p.size.h,
+    });
+  };
+
+  const onPrimitiveClick = (p: Primitive) => {
+    // If a child element (not root) is selected, insert as child.
+    if (selectedId && selectedPath && selectedPath !== "0") {
+      const comp = components[selectedId];
+      if (!comp) return;
+      try {
+        const next = insertChildAtPath(comp.source, selectedPath, p.snippet);
+        setSource(selectedId, next);
+        return;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    // Root selected → still insert as child of root (commonly what user wants).
+    if (selectedId && selectedPath === "0") {
+      const comp = components[selectedId];
+      if (comp) {
+        try {
+          const next = insertChildAtPath(comp.source, "0", p.snippet);
+          setSource(selectedId, next);
+          return;
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+    // Nothing selected → create a new component.
+    spawnComponent(p);
+  };
 
   return (
     <aside className="flex w-[232px] shrink-0 flex-col border-r border-stroke bg-panel text-[12px]">
@@ -66,7 +126,11 @@ export function LeftSidebar() {
           <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
             Project
           </span>
-          <button className="grid size-5 place-items-center rounded text-ink-faint hover:bg-panel-soft hover:text-ink-muted">
+          <button
+            onClick={() => spawnComponent(PRIMITIVES[0])}
+            title="New component"
+            className="grid size-5 place-items-center rounded text-ink-faint hover:bg-panel-soft hover:text-ink-muted"
+          >
             <Plus size={11} strokeWidth={2} />
           </button>
         </div>
@@ -80,6 +144,10 @@ export function LeftSidebar() {
                 active={selectedId === c.id}
                 dirty={selectedId === c.id}
                 onClick={() => selectComponent(c.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setMenu({ x: e.clientX, y: e.clientY, id: c.id });
+                }}
               />
             ))}
           </TreeFolder>
@@ -92,17 +160,35 @@ export function LeftSidebar() {
           </span>
         </div>
         <div className="grid grid-cols-3 gap-1 px-1">
-          <PrimitiveCard icon={Square} label="div" />
-          <PrimitiveCard icon={RectangleHorizontal} label="Button" />
-          <PrimitiveCard icon={TextCursorInput} label="Input" />
-          <PrimitiveCard icon={Type} label="Text" />
-          <PrimitiveCard icon={ImageIcon} label="Image" />
-          <PrimitiveCard icon={Sparkles} label="Icon" />
-          <PrimitiveCard icon={Rows3} label="Flex" />
-          <PrimitiveCard icon={LayoutGrid} label="Grid" />
-          <PrimitiveCard icon={LayoutTemplate} label="Card" />
+          {PRIMITIVES.map((p) => (
+            <PrimitiveCard
+              key={p.id}
+              icon={p.icon}
+              label={p.label}
+              onClick={() => onPrimitiveClick(p)}
+            />
+          ))}
         </div>
       </div>
+
+      {menu ? (
+        <div
+          className="fixed z-50 min-w-[160px] rounded-md border border-stroke bg-white py-1 shadow-lg"
+          style={{ left: menu.x, top: menu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              deleteComponent(menu.id);
+              setMenu(null);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-red-600 hover:bg-red-50"
+          >
+            <Trash2 size={12} strokeWidth={1.75} />
+            Delete component
+          </button>
+        </div>
+      ) : null}
     </aside>
   );
 }
@@ -164,16 +250,19 @@ function TreeFile({
   dirty,
   config,
   onClick,
+  onContextMenu,
 }: {
   label: string;
   active?: boolean;
   dirty?: boolean;
   config?: boolean;
   onClick?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   return (
     <button
       onClick={onClick}
+      onContextMenu={onContextMenu}
       className={
         "group flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 " +
         (active
@@ -200,12 +289,17 @@ function TreeFile({
 function PrimitiveCard({
   icon: Icon,
   label,
+  onClick,
 }: {
   icon: LucideIcon;
   label: string;
+  onClick?: () => void;
 }) {
   return (
-    <button className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-md border border-stroke bg-panel hover:border-stroke-strong hover:bg-panel-soft">
+    <button
+      onClick={onClick}
+      className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-md border border-stroke bg-panel hover:border-stroke-strong hover:bg-panel-soft"
+    >
       <Icon size={16} strokeWidth={1.5} className="text-ink-soft" />
       <span className="text-[10px] text-ink-muted">{label}</span>
     </button>

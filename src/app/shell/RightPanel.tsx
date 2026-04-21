@@ -20,11 +20,14 @@ import {
   useState,
 } from "react";
 import { useProject } from "@/store/project";
+import { useMetrics } from "@/store/metrics";
 import {
   getClassNameAtPath,
   setClassAtPath,
 } from "@/ast/tailwind";
 import { PALETTE, PALETTE_BY_NAME, type PaletteColor } from "@/ast/palette";
+import { bindTextPropAtPath, listProps, unbindPropAtPath } from "@/ast/props";
+import { getTextAtPath, isTextLeaf } from "@/ast/text";
 import { parseSource } from "@/ast/parse";
 import {
   findRootJSXElement,
@@ -116,9 +119,20 @@ export function RightPanel() {
   const setSource = useProject((s) => s.setSource);
 
   const [state, setState] = useState<string>("base");
+  const [panel, setPanel] = useState<"design" | "props" | "layers">("design");
+  const propValuesByComp = useProject((s) => s.propValues);
+  const setPropValue = useProject((s) => s.setPropValue);
 
   const component = selectedId ? components[selectedId] : null;
   const path = selectedPath ?? "0";
+
+  const rootSize = useMetrics((s) => (selectedId ? s.rootSizes[selectedId] : undefined));
+  const selRect = useMetrics((s) => (selectedId ? s.selectedRects[selectedId] : undefined));
+  const measured = path === "0"
+    ? rootSize
+    : selRect && selRect.path === path
+      ? { w: selRect.w, h: selRect.h }
+      : undefined;
 
   const classes = useMemo(() => {
     if (!component) return [];
@@ -203,9 +217,9 @@ export function RightPanel() {
   return (
     <aside className="flex w-[320px] shrink-0 flex-col overflow-x-hidden border-l border-stroke bg-panel text-[12px]">
       <div className="flex h-9 items-center gap-4 border-b border-stroke px-3 text-[11px] font-medium">
-        <PanelTab icon={Paintbrush} label="Design" active />
-        <PanelTab icon={Code2} label="Props" />
-        <PanelTab icon={Layers} label="Layers" />
+        <PanelTab icon={Paintbrush} label="Design" active={panel === "design"} onClick={() => setPanel("design")} />
+        <PanelTab icon={Code2} label="Props" active={panel === "props"} onClick={() => setPanel("props")} />
+        <PanelTab icon={Layers} label="Layers" active={panel === "layers"} onClick={() => setPanel("layers")} />
       </div>
 
       <div className="flex items-center gap-1 border-b border-stroke px-3 py-2 text-[10.5px] text-ink-muted">
@@ -214,20 +228,60 @@ export function RightPanel() {
         <span className="font-mono text-[10px] text-ink-faint">{path}</span>
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex items-center gap-1 border-b border-stroke px-3 py-1.5">
+        {STATE_TABS.map((s) => {
+          const active = s === state;
+          return (
+            <button
+              key={s}
+              onClick={() => setState(s)}
+              className={
+                "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] transition " +
+                (active
+                  ? "bg-accent-tint text-accent-ink"
+                  : "text-ink-muted hover:text-ink")
+              }
+            >
+              <span
+                className={
+                  "size-1.5 rounded-full " +
+                  (active ? "bg-accent" : "bg-ink-faint")
+                }
+              />
+              {s}
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        className={"flex-1 overflow-auto " + (state !== "base" ? "[&_.wnd-field]:!bg-emerald-50 [&_.wnd-field]:!border-emerald-300 [&_input]:!bg-transparent [&_input]:!text-emerald-900" : "")}
+      >
+        {panel === "props" && component ? (
+          <PropsPanel
+            component={component}
+            path={path}
+            values={propValuesByComp[component.id] ?? {}}
+            setValue={(name, val) => setPropValue(component.id, name, val)}
+          />
+        ) : null}
+        {panel === "design" ? (
+        <>
         <Group title="Sizing">
           <DualRow label="Width">
             <InputBox
-              value={stripPrefix(currentWidth, "w-") ?? "auto"}
-              hint={currentWidth ?? "—"}
+              value={stripPrefix(currentWidth, "w-") ?? ""}
+              placeholder={!currentWidth && measured ? `${Math.round(measured.w)}px` : "auto"}
+              hint={currentWidth ?? (measured ? "measured" : "—")}
               onCommit={(v) => swap(currentWidth, `w-${v}`)}
             />
             <InputBox value="100" hint="%" readOnly />
           </DualRow>
           <DualRow label="Height">
             <InputBox
-              value={stripPrefix(currentHeight, "h-") ?? "auto"}
-              hint={currentHeight ?? "—"}
+              value={stripPrefix(currentHeight, "h-") ?? ""}
+              placeholder={!currentHeight && measured ? `${Math.round(measured.h)}px` : "auto"}
+              hint={currentHeight ?? (measured ? "measured" : "—")}
               onCommit={(v) => swap(currentHeight, `h-${v}`)}
             />
             <InputBox value="—" hint="" readOnly />
@@ -395,31 +449,6 @@ export function RightPanel() {
               {...previewColor(currentBorderColor, "border")}
             />
           </DualRow>
-          <div className="col-span-2 -mx-0 mt-1 flex items-center gap-1">
-            {STATE_TABS.map((s) => {
-              const active = s === state;
-              return (
-                <button
-                  key={s}
-                  onClick={() => setState(s)}
-                  className={
-                    "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] " +
-                    (active
-                      ? "bg-accent-tint text-accent-ink"
-                      : "text-ink-muted hover:text-ink")
-                  }
-                >
-                  <span
-                    className={
-                      "size-1.5 rounded-full " +
-                      (active ? "bg-accent" : "bg-ink-faint")
-                    }
-                  />
-                  {s}
-                </button>
-              );
-            })}
-          </div>
         </Group>
 
         <Group title="Borders">
@@ -490,6 +519,8 @@ export function RightPanel() {
           selectedPath={path}
           onSelect={(p) => selectElement(p)}
         />
+        </>
+        ) : null}
       </div>
     </aside>
   );
@@ -512,13 +543,16 @@ function PanelTab({
   icon: Icon,
   label,
   active,
+  onClick,
 }: {
   icon: LucideIcon;
   label: string;
   active?: boolean;
+  onClick?: () => void;
 }) {
   return (
     <button
+      onClick={onClick}
       className={
         "flex items-center gap-1.5 h-9 border-b-2 transition -mb-px " +
         (active
@@ -649,12 +683,14 @@ function InputBox({
   hint,
   readOnly,
   full,
+  placeholder,
   onCommit,
 }: {
   value: string;
   hint: string;
   readOnly?: boolean;
   full?: boolean;
+  placeholder?: string;
   onCommit?: (v: string) => void;
 }) {
   const [local, setLocal] = useState(value);
@@ -664,7 +700,7 @@ function InputBox({
   return (
     <div
       className={
-        "flex h-7 items-center gap-1 rounded-md border border-stroke bg-white px-2 " +
+        "wnd-field flex h-7 items-center gap-1 rounded-md border border-stroke bg-white px-2 " +
         (full ? "col-span-2 " : "") +
         (readOnly ? "opacity-100" : "focus-within:border-accent")
       }
@@ -672,12 +708,13 @@ function InputBox({
       <input
         value={local}
         readOnly={readOnly}
+        placeholder={placeholder}
         onChange={(e) => setLocal(e.target.value)}
         onBlur={() => onCommit?.(local)}
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
-        className="min-w-0 flex-1 bg-transparent text-[11px] text-ink outline-none"
+        className="min-w-0 flex-1 bg-transparent text-[11px] text-ink placeholder:text-ink-faint/70 outline-none"
       />
       {hint ? (
         <span className="shrink-0 text-[10px] font-mono text-ink-faint">
@@ -738,7 +775,7 @@ function SelectBox({
           if (!open) onOpen?.();
           setOpen((o) => !o);
         }}
-        className="flex h-7 w-full items-center gap-1 rounded-md border border-stroke bg-white px-2 hover:border-stroke-strong"
+        className="flex h-7 w-full items-center gap-1 wnd-field rounded-md border border-stroke bg-white px-2 hover:border-stroke-strong"
       >
         <span className="min-w-0 flex-1 truncate text-left text-[11px] text-ink">
           {hint}
@@ -956,6 +993,140 @@ function ColorDropdown({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function PropsPanel({
+  component,
+  path,
+  values,
+  setValue,
+}: {
+  component: { id: string; source: string };
+  path: string;
+  values: Record<string, string>;
+  setValue: (name: string, v: string) => void;
+}) {
+  const setSource = useProject((s) => s.setSource);
+  const selectElement = useProject((s) => s.selectElement);
+  const clearPropValue = useProject((s) => s.clearPropValue);
+
+  const props = useMemo(() => {
+    try {
+      return listProps(component.source);
+    } catch {
+      return [];
+    }
+  }, [component.source]);
+
+  const canBindHere = useMemo(() => {
+    try {
+      return isTextLeaf(component.source, path) && getTextAtPath(component.source, path) !== null;
+    } catch {
+      return false;
+    }
+  }, [component.source, path]);
+
+  const selectionIsBound = useMemo(() => {
+    return props.some((p) => p.usedAtPaths.includes(path));
+  }, [props, path]);
+
+  const [newName, setNewName] = useState("");
+
+  const bind = () => {
+    const text = getTextAtPath(component.source, path);
+    if (text === null) return;
+    const name = newName.trim() || "label";
+    try {
+      const { code } = bindTextPropAtPath(component.source, path, name, text);
+      setSource(component.id, code);
+      setNewName("");
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const unbind = (propName: string) => {
+    // Unbind at every usage path
+    let code = component.source;
+    try {
+      const p = props.find((x) => x.name === propName);
+      if (!p) return;
+      for (const usage of p.usedAtPaths) {
+        code = unbindPropAtPath(code, usage);
+      }
+      setSource(component.id, code);
+      clearPropValue(component.id, propName);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  return (
+    <Group title="Props" headerRight={null}>
+      {canBindHere && !selectionIsBound ? (
+        <div className="col-span-2 flex items-center gap-1.5 rounded-md border border-dashed border-stroke bg-panel-soft p-1.5">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="prop name"
+            className="min-w-0 flex-1 rounded-md border border-stroke bg-white px-2 py-1 text-[11px] text-ink outline-none focus:border-accent"
+          />
+          <button
+            onClick={bind}
+            className="rounded-md bg-accent px-2 py-1 text-[10.5px] font-semibold text-white hover:brightness-105"
+          >
+            Bind text
+          </button>
+        </div>
+      ) : null}
+      {props.length === 0 ? (
+        <div className="col-span-2 text-[10.5px] text-ink-faint">
+          {canBindHere ? "Name a prop and bind the selected text." : "Select a text element to bind it to a prop."}
+        </div>
+      ) : null}
+      {props.map((p) => {
+        const override = values[p.name];
+        const current = override ?? p.default;
+        const isSelection = p.usedAtPaths.includes(path);
+        return (
+          <div key={p.name} className="col-span-2 flex flex-col gap-1">
+            <div className="flex items-center justify-between gap-1">
+              <div className="flex items-center gap-1.5 text-[10.5px] text-ink">
+                <span className="font-mono text-[10px] text-accent-ink">{p.name}</span>
+                {p.usedAtPaths[0] ? (
+                  <button
+                    onClick={() => selectElement(p.usedAtPaths[0])}
+                    className={
+                      "rounded-full px-1.5 py-0.5 text-[9.5px] " +
+                      (isSelection ? "bg-accent-tint text-accent-ink" : "bg-panel-soft text-ink-muted hover:text-ink")
+                    }
+                    title="Jump to bound element"
+                  >
+                    {p.usedAtPaths.length} use{p.usedAtPaths.length === 1 ? "" : "s"}
+                  </button>
+                ) : null}
+              </div>
+              <button
+                onClick={() => unbind(p.name)}
+                className="text-[10px] text-ink-faint hover:text-ink"
+                title="Unbind"
+              >
+                unbind
+              </button>
+            </div>
+            <div className="flex items-center gap-1">
+              <InputBox
+                value={current}
+                hint={override !== undefined ? "override" : "default"}
+                onCommit={(v) => setValue(p.name, v)}
+                full
+              />
+            </div>
+          </div>
+        );
+      })}
+    </Group>
   );
 }
 

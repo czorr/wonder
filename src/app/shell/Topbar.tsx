@@ -12,10 +12,12 @@ import {
   Minus,
   Eye,
   Download,
+  RefreshCcw,
 } from "lucide-react";
 import { useEffect } from "react";
 import { useCanvas } from "@/store/canvas";
 import { useProject } from "@/store/project";
+import { removeClassesAtPath } from "@/ast/tailwind";
 
 const BREAKPOINTS = ["base", "sm", "md", "lg", "xl", "2xl"] as const;
 
@@ -29,8 +31,25 @@ export function Topbar() {
   const setTool = useCanvas((s) => s.setTool);
 
   const components = useProject((s) => s.components);
+  const order = useProject((s) => s.order);
   const selectedId = useProject((s) => s.selectedComponentId);
   const activeTab = useProject((s) => s.activeTab);
+  const setSource = useProject((s) => s.setSource);
+
+  const resetSizes = () => {
+    for (const id of order) {
+      const c = components[id];
+      if (!c) continue;
+      try {
+        const next = removeClassesAtPath(c.source, "0", (cls) =>
+          /^w-\[.*\]$/.test(cls) || /^h-\[.*\]$/.test(cls),
+        );
+        if (next !== c.source) setSource(id, next);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -130,6 +149,14 @@ export function Topbar() {
             <Plus size={13} strokeWidth={2} />
           </button>
         </div>
+
+        <button
+          onClick={resetSizes}
+          title="Reset frame sizes (remove w-[]/h-[] on roots)"
+          className="grid size-7 place-items-center rounded-lg border border-stroke bg-panel text-ink-muted hover:text-ink transition"
+        >
+          <RefreshCcw size={13} strokeWidth={1.75} />
+        </button>
 
         <button
           onClick={openPreview}
