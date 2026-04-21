@@ -12,6 +12,16 @@ export default defineConfig(async () => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  define: {
+    "process.env.NODE_ENV": JSON.stringify(
+      process.env.NODE_ENV ?? "development",
+    ),
+    "process.env.BABEL_TYPES_8_BREAKING": "false",
+    "process.env.BABEL_8_BREAKING": "false",
+  },
+  optimizeDeps: {
+    exclude: ["esbuild-wasm"],
+  },
   clearScreen: false,
   server: {
     port: 1420,

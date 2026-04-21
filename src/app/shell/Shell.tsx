@@ -1,12 +1,15 @@
+import { TitleStrip } from "@/app/shell/TitleStrip";
 import { Topbar } from "@/app/shell/Topbar";
 import { LeftSidebar } from "@/app/shell/LeftSidebar";
 import { RightPanel } from "@/app/shell/RightPanel";
 import { CanvasArea } from "@/app/shell/CanvasArea";
 import { CodePanel } from "@/app/shell/CodePanel";
+import { StatusBar } from "@/app/shell/StatusBar";
 
 export function Shell() {
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-bg text-fg">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-canvas text-ink">
+      <TitleStrip />
       <Topbar />
       <div className="flex min-h-0 flex-1">
         <LeftSidebar />
@@ -16,6 +19,7 @@ export function Shell() {
         </div>
         <RightPanel />
       </div>
+      <StatusBar />
     </div>
   );
 }

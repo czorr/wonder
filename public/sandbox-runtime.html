@@ -1,0 +1,129 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wonder sandbox</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.3.1",
+          "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
+          "react/jsx-dev-runtime": "https://esm.sh/react@18.3.1/jsx-dev-runtime",
+          "react-dom": "https://esm.sh/react-dom@18.3.1",
+          "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+          "lucide-react": "https://esm.sh/lucide-react@0.454.0?external=react",
+          "@iconify/react": "https://esm.sh/@iconify/react@5.0.2?external=react",
+          "motion": "https://esm.sh/motion@11.11.17?external=react"
+        }
+      }
+    </script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        min-height: 100%;
+      }
+      #root {
+        padding: 16px;
+      }
+      #error {
+        display: none;
+        position: fixed;
+        inset: 8px;
+        padding: 12px;
+        background: #1f1f24;
+        color: #fca5a5;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        border: 1px solid #7f1d1d;
+        border-radius: 8px;
+        overflow: auto;
+        z-index: 9999;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <pre id="error"></pre>
+    <script type="module">
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+
+      const errorEl = document.getElementById("error");
+      const showError = (msg) => {
+        errorEl.textContent = msg;
+        errorEl.style.display = "block";
+      };
+      const clearError = () => {
+        errorEl.textContent = "";
+        errorEl.style.display = "none";
+      };
+
+      window.addEventListener("error", (e) => {
+        showError(String(e.error?.stack || e.message));
+        parent.postMessage(
+          { type: "sandbox:error", message: String(e.error?.stack || e.message) },
+          "*",
+        );
+      });
+
+      const root = createRoot(document.getElementById("root"));
+      let currentUrl = null;
+      let currentProps = {};
+
+      function render(Component) {
+        try {
+          clearError();
+          root.render(React.createElement(Component, currentProps));
+          parent.postMessage({ type: "sandbox:rendered" }, "*");
+        } catch (err) {
+          showError(String(err?.stack || err));
+          parent.postMessage(
+            { type: "sandbox:error", message: String(err?.stack || err) },
+            "*",
+          );
+        }
+      }
+
+      let CurrentComponent = null;
+
+      window.addEventListener("message", async (e) => {
+        const msg = e.data;
+        if (!msg || typeof msg !== "object") return;
+
+        if (msg.type === "sandbox:render") {
+          try {
+            if (currentUrl) URL.revokeObjectURL(currentUrl);
+            const blob = new Blob([msg.code], { type: "text/javascript" });
+            currentUrl = URL.createObjectURL(blob);
+            const mod = await import(/* @vite-ignore */ currentUrl);
+            CurrentComponent = mod.default || mod.Component;
+            if (!CurrentComponent) {
+              throw new Error(
+                "Module must have a default export (React component)",
+              );
+            }
+            currentProps = msg.props || {};
+            render(CurrentComponent);
+          } catch (err) {
+            showError(String(err?.stack || err));
+            parent.postMessage(
+              { type: "sandbox:error", message: String(err?.stack || err) },
+              "*",
+            );
+          }
+        } else if (msg.type === "sandbox:setProps") {
+          currentProps = msg.props || {};
+          if (CurrentComponent) render(CurrentComponent);
+        }
+      });
+
+      parent.postMessage({ type: "sandbox:ready" }, "*");
+    </script>
+  </body>
+</html>
