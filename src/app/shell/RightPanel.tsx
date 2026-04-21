@@ -3,6 +3,7 @@ import {
   ChevronRight,
   Code2,
   Eye,
+  EyeOff,
   Layers,
   Paintbrush,
   Plus,
@@ -11,6 +12,24 @@ import {
   AlignCenter,
   AlignRight,
   AlignJustify,
+  ArrowRight,
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  Square,
+  Rows3,
+  Columns3,
+  Minus,
+  AlignHorizontalJustifyStart,
+  AlignHorizontalJustifyCenter,
+  AlignHorizontalJustifyEnd,
+  AlignHorizontalSpaceBetween,
+  AlignHorizontalSpaceAround,
+  AlignVerticalJustifyStart,
+  AlignVerticalJustifyCenter,
+  AlignVerticalJustifyEnd,
+  AlignStartVertical,
+  StretchHorizontal,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -111,6 +130,72 @@ const BORDER_WIDTH_VALUES = new Set(BORDER_WIDTHS.map((b) => b.value));
 
 const STATE_TABS = ["base", "hover", "focus", "active"];
 
+const DISPLAY_OPTIONS = [
+  { value: "block", icon: Square, label: "block" },
+  { value: "flex", icon: Rows3, label: "flex" },
+  { value: "grid", icon: Columns3, label: "grid" },
+  { value: "inline", icon: Minus, label: "inline" },
+  { value: "hidden", icon: EyeOff, label: "hidden" },
+];
+const DISPLAY_VALUES = new Set(DISPLAY_OPTIONS.map((d) => d.value));
+
+const DIRECTION_OPTIONS = [
+  { value: "flex-row", icon: ArrowRight },
+  { value: "flex-col", icon: ArrowDown },
+  { value: "flex-row-reverse", icon: ArrowLeft },
+  { value: "flex-col-reverse", icon: ArrowUp },
+];
+const DIRECTION_VALUES = new Set(DIRECTION_OPTIONS.map((d) => d.value));
+
+const JUSTIFY_OPTIONS = [
+  { value: "justify-start", icon: AlignHorizontalJustifyStart, label: "start" },
+  { value: "justify-center", icon: AlignHorizontalJustifyCenter, label: "center" },
+  { value: "justify-end", icon: AlignHorizontalJustifyEnd, label: "end" },
+  { value: "justify-between", icon: AlignHorizontalSpaceBetween, label: "between" },
+  { value: "justify-around", icon: AlignHorizontalSpaceAround, label: "around" },
+];
+const JUSTIFY_VALUES = new Set(JUSTIFY_OPTIONS.map((j) => j.value));
+
+const ALIGN_OPTIONS = [
+  { value: "items-start", icon: AlignVerticalJustifyStart, label: "start" },
+  { value: "items-center", icon: AlignVerticalJustifyCenter, label: "center" },
+  { value: "items-end", icon: AlignVerticalJustifyEnd, label: "end" },
+  { value: "items-baseline", icon: AlignStartVertical, label: "baseline" },
+  { value: "items-stretch", icon: StretchHorizontal, label: "stretch" },
+];
+const ALIGN_VALUES = new Set(ALIGN_OPTIONS.map((a) => a.value));
+
+const SPACING_SIDES = ["t", "r", "b", "l"] as const;
+type Side = (typeof SPACING_SIDES)[number];
+
+function readSideSpacing(
+  classes: string[],
+  prefix: "p" | "m",
+  side: Side,
+): { cls: string | undefined; px: number } {
+  const axis: "x" | "y" = side === "t" || side === "b" ? "y" : "x";
+  const specific = classes.find((c) => new RegExp(`^${prefix}${side}-[\\d.]+$`).test(c));
+  const axisC = classes.find((c) => new RegExp(`^${prefix}${axis}-[\\d.]+$`).test(c));
+  const allC = classes.find((c) => new RegExp(`^${prefix}-[\\d.]+$`).test(c));
+  const chosen = specific ?? axisC ?? allC;
+  const num = chosen?.match(/-([\d.]+)$/)?.[1];
+  const entry = SPACING_SCALE.find((s) => s.n === num);
+  return { cls: chosen, px: entry?.px ?? 0 };
+}
+
+function pxToScale(px: number): string {
+  let best = SPACING_SCALE[0];
+  let bestDiff = Infinity;
+  for (const s of SPACING_SCALE) {
+    const d = Math.abs(s.px - px);
+    if (d < bestDiff) {
+      bestDiff = d;
+      best = s;
+    }
+  }
+  return best.n;
+}
+
 export function RightPanel() {
   const components = useProject((s) => s.components);
   const selectedId = useProject((s) => s.selectedComponentId);
@@ -147,6 +232,10 @@ export function RightPanel() {
 
   const currentPadding = find((c) => /^p-/.test(c));
   const currentGap = find((c) => /^gap-/.test(c));
+  const currentDisplay = find((c) => DISPLAY_VALUES.has(c));
+  const currentDirection = find((c) => DIRECTION_VALUES.has(c));
+  const currentJustify = find((c) => JUSTIFY_VALUES.has(c));
+  const currentAlignItems = find((c) => ALIGN_VALUES.has(c));
   const currentWidth = find((c) => /^w-/.test(c));
   const currentHeight = find((c) => /^h-/.test(c));
 
@@ -267,48 +356,54 @@ export function RightPanel() {
         ) : null}
         {panel === "design" ? (
         <>
-        <Group title="Sizing">
-          <DualRow label="Width">
-            <InputBox
-              value={stripPrefix(currentWidth, "w-") ?? ""}
-              placeholder={!currentWidth && measured ? `${Math.round(measured.w)}px` : "auto"}
-              hint={currentWidth ?? (measured ? "measured" : "—")}
-              onCommit={(v) => swap(currentWidth, `w-${v}`)}
+        <Group
+          title="Layout"
+          headerRight={
+            <ResetButton
+              onReset={() => {
+                const toRemove = [currentDisplay, currentDirection, currentJustify, currentAlignItems, currentGap].filter(Boolean) as string[];
+                if (!component || toRemove.length === 0) return;
+                let src = component.source;
+                for (const cls of toRemove) {
+                  try { src = setClassAtPath(src, path, cls, ""); } catch {}
+                }
+                setSource(component.id, src);
+              }}
             />
-            <InputBox value="100" hint="%" readOnly />
+          }
+        >
+          <DualRow label="Display">
+            <IconToggleGroup
+              options={DISPLAY_OPTIONS}
+              current={currentDisplay}
+              onChange={(v) => swap(currentDisplay, v)}
+              span={2}
+            />
           </DualRow>
-          <DualRow label="Height">
-            <InputBox
-              value={stripPrefix(currentHeight, "h-") ?? ""}
-              placeholder={!currentHeight && measured ? `${Math.round(measured.h)}px` : "auto"}
-              hint={currentHeight ?? (measured ? "measured" : "—")}
-              onCommit={(v) => swap(currentHeight, `h-${v}`)}
+          <DualRow label="Direction">
+            <IconToggleGroup
+              options={DIRECTION_OPTIONS}
+              current={currentDirection}
+              onChange={(v) => swap(currentDirection, v)}
+              span={2}
             />
-            <InputBox value="—" hint="" readOnly />
           </DualRow>
-        </Group>
-
-        <Group title="Spacing">
-          <DualRow
-            label="Padding"
-            scrub={{
-              current: currentPadding ?? "p-0",
-              values: SPACING_SCALE.map((s) => `p-${s.n}`),
-              onChange: (v) => swap(currentPadding, v),
-              onCommit: clearBaseline,
-              onStart: captureBaseline,
-            }}
-          >
-            <SpacingSelect
-              current={currentPadding}
-              prefix="p"
-              onChange={(v) => commit(currentPadding, v)}
-              preview={preview(currentPadding)}
+          <DualRow label="Justify">
+            <IconToggleGroup
+              options={JUSTIFY_OPTIONS}
+              current={currentJustify}
+              onChange={(v) => swap(currentJustify, v)}
+              span={2}
+              showLabel
             />
-            <InputBox
-              value={String(spacingPx(currentPadding, "p-") ?? 0)}
-              hint="px"
-              readOnly
+          </DualRow>
+          <DualRow label="Align">
+            <IconToggleGroup
+              options={ALIGN_OPTIONS}
+              current={currentAlignItems}
+              onChange={(v) => swap(currentAlignItems, v)}
+              span={2}
+              showLabel
             />
           </DualRow>
           <DualRow
@@ -333,6 +428,56 @@ export function RightPanel() {
               readOnly
             />
           </DualRow>
+        </Group>
+
+        <Group title="Sizing">
+          <DualRow label="Width">
+            <InputBox
+              value={stripPrefix(currentWidth, "w-") ?? ""}
+              placeholder={!currentWidth && measured ? `${Math.round(measured.w)}px` : "auto"}
+              hint={currentWidth ?? (measured ? "measured" : "—")}
+              onCommit={(v) => swap(currentWidth, `w-${v}`)}
+            />
+            <InputBox value="100" hint="%" readOnly />
+          </DualRow>
+          <DualRow label="Height">
+            <InputBox
+              value={stripPrefix(currentHeight, "h-") ?? ""}
+              placeholder={!currentHeight && measured ? `${Math.round(measured.h)}px` : "auto"}
+              hint={currentHeight ?? (measured ? "measured" : "—")}
+              onCommit={(v) => swap(currentHeight, `h-${v}`)}
+            />
+            <InputBox value="—" hint="" readOnly />
+          </DualRow>
+        </Group>
+
+        <Group
+          title="Spacing"
+          headerRight={
+            <ResetButton
+              onReset={() => {
+                if (!component) return;
+                const toRemove = classes.filter((c) => /^(?:p|m)[trblxy]?-[\d.]+$/.test(c));
+                if (toRemove.length === 0) return;
+                let src = component.source;
+                for (const cls of toRemove) {
+                  try { src = setClassAtPath(src, path, cls, ""); } catch {}
+                }
+                setSource(component.id, src);
+              }}
+            />
+          }
+        >
+          <BoxModel
+            classes={classes}
+            onStart={captureBaseline}
+            onEnd={clearBaseline}
+            onWrite={(prefix, side, px) => {
+              const { cls } = readSideSpacing(classes, prefix, side);
+              const n = pxToScale(px);
+              swap(cls, `${prefix}${side}-${n}`);
+            }}
+          />
         </Group>
 
         <Group title="Typography">
@@ -592,6 +737,219 @@ function Group({
       {open ? (
         <div className="flex flex-col gap-1.5 px-3 pb-3">{children}</div>
       ) : null}
+    </div>
+  );
+}
+
+function ResetButton({ onReset }: { onReset: () => void }) {
+  return (
+    <button
+      onClick={onReset}
+      className="text-[10px] text-ink-muted hover:text-ink"
+    >
+      Reset
+    </button>
+  );
+}
+
+function IconToggleGroup<T extends { value: string; icon: LucideIcon; label?: string }>(
+  { options, current, onChange, span, showLabel }: {
+    options: T[];
+    current: string | undefined;
+    onChange: (v: string) => void;
+    span?: 1 | 2;
+    showLabel?: boolean;
+  },
+) {
+  const activeLabel = options.find((o) => o.value === current)?.label;
+  return (
+    <div className={(span === 2 ? "col-span-2 " : "") + "flex flex-col gap-0.5"}>
+      <div className="flex items-center rounded-md border border-stroke bg-panel-soft p-0.5">
+        {options.map((o) => {
+          const Icon = o.icon;
+          const active = current === o.value;
+          return (
+            <button
+              key={o.value}
+              title={o.value}
+              onClick={() => onChange(o.value)}
+              className={
+                "flex flex-1 items-center justify-center h-6 rounded-[4px] transition " +
+                (active
+                  ? "bg-white shadow-sm text-ink"
+                  : "text-ink-muted hover:text-ink")
+              }
+            >
+              <Icon size={13} strokeWidth={1.75} />
+            </button>
+          );
+        })}
+      </div>
+      {showLabel ? (
+        <span className="pl-1 text-[9.5px] text-ink-faint">{activeLabel ?? "—"}</span>
+      ) : null}
+    </div>
+  );
+}
+
+function BoxModel({
+  classes,
+  onWrite,
+  onStart,
+  onEnd,
+}: {
+  classes: string[];
+  onWrite: (prefix: "p" | "m", side: Side, px: number) => void;
+  onStart?: () => void;
+  onEnd?: () => void;
+}) {
+  const m = {
+    t: readSideSpacing(classes, "m", "t"),
+    r: readSideSpacing(classes, "m", "r"),
+    b: readSideSpacing(classes, "m", "b"),
+    l: readSideSpacing(classes, "m", "l"),
+  };
+  const p = {
+    t: readSideSpacing(classes, "p", "t"),
+    r: readSideSpacing(classes, "p", "r"),
+    b: readSideSpacing(classes, "p", "b"),
+    l: readSideSpacing(classes, "p", "l"),
+  };
+  return (
+    <div className="col-span-full -mx-1 rounded-md border border-stroke bg-panel-soft px-2 py-3">
+      <div className="relative">
+        <span className="absolute left-1 top-1 text-[9px] font-medium uppercase tracking-wider text-ink-faint">
+          Margin
+        </span>
+        <div className="mx-auto flex w-full flex-col items-center">
+          <SideInput side="t" kind="m" value={m.t.px} onStart={onStart} onEnd={onEnd} onCommit={(v) => onWrite("m", "t", v)} />
+          <div className="flex w-full items-center justify-between gap-1 py-1">
+            <SideInput side="l" kind="m" value={m.l.px} onStart={onStart} onEnd={onEnd} onCommit={(v) => onWrite("m", "l", v)} />
+            <div className="relative flex-1 rounded-sm bg-emerald-100/70 py-3">
+              <div className="flex flex-col items-center">
+                <SideInput side="t" kind="p" accent value={p.t.px} onStart={onStart} onEnd={onEnd} onCommit={(v) => onWrite("p", "t", v)} />
+                <div className="flex w-full items-center justify-between gap-1 py-1">
+                  <SideInput side="l" kind="p" accent value={p.l.px} onStart={onStart} onEnd={onEnd} onCommit={(v) => onWrite("p", "l", v)} />
+                  <div className="h-6 flex-1" />
+                  <SideInput side="r" kind="p" accent value={p.r.px} onStart={onStart} onEnd={onEnd} onCommit={(v) => onWrite("p", "r", v)} />
+                </div>
+                <SideInput side="b" kind="p" accent value={p.b.px} onStart={onStart} onEnd={onEnd} onCommit={(v) => onWrite("p", "b", v)} />
+              </div>
+            </div>
+            <SideInput side="r" kind="m" value={m.r.px} onStart={onStart} onEnd={onEnd} onCommit={(v) => onWrite("m", "r", v)} />
+          </div>
+          <SideInput side="b" kind="m" value={m.b.px} onStart={onStart} onEnd={onEnd} onCommit={(v) => onWrite("m", "b", v)} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const SIDE_ICON: Record<Side, LucideIcon> = {
+  t: ArrowUp,
+  r: ArrowRight,
+  b: ArrowDown,
+  l: ArrowLeft,
+};
+
+function SideInput({
+  value,
+  accent,
+  side,
+  kind,
+  onCommit,
+  onStart,
+  onEnd,
+}: {
+  value: number;
+  accent?: boolean;
+  side: Side;
+  kind: "p" | "m";
+  onCommit: (v: number) => void;
+  onStart?: () => void;
+  onEnd?: () => void;
+}) {
+  const [local, setLocal] = useState(String(value));
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [scrubbing, setScrubbing] = useState(false);
+  useEffect(() => setLocal(String(value)), [value]);
+
+  const beginScrub = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startVal = value;
+    let moved = false;
+    let lastVal = startVal;
+    onStart?.();
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX;
+      if (Math.abs(dx) > 2) {
+        moved = true;
+        setScrubbing(true);
+      }
+      const next = Math.max(0, Math.round(startVal + dx / 2));
+      if (next !== lastVal) {
+        lastVal = next;
+        setLocal(String(next));
+        onCommit(next);
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setScrubbing(false);
+      onEnd?.();
+      if (!moved) {
+        // Treat as a plain click — focus the input for typing.
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const Icon = SIDE_ICON[side];
+  const accentCls = accent ? "text-emerald-900" : "text-ink-muted";
+  return (
+    <div
+      className={
+        "group relative flex items-center justify-center rounded border border-transparent " +
+        (scrubbing ? "border-accent bg-white " : "hover:border-stroke ")
+      }
+    >
+      <button
+        onMouseDown={beginScrub}
+        title={`Scrub ${kind}${side}`}
+        className={
+          "grid h-5 w-3 shrink-0 place-items-center cursor-ew-resize opacity-0 group-hover:opacity-60 hover:!opacity-100 " +
+          accentCls
+        }
+      >
+        <Icon size={9} strokeWidth={2} />
+      </button>
+      <input
+        ref={inputRef}
+        value={local}
+        onMouseDown={(e) => {
+          // Allow the parent div drag to handle scrub; if the user actually
+          // clicks without moving we re-focus in the mouseup handler.
+          if (document.activeElement !== inputRef.current) beginScrub(e);
+        }}
+        onChange={(e) => setLocal(e.target.value)}
+        onBlur={() => {
+          const n = Number(local);
+          if (!Number.isNaN(n) && n !== value) onCommit(n);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        }}
+        className={
+          "h-5 w-8 bg-transparent text-center text-[10.5px] outline-none focus:cursor-text " +
+          accentCls
+        }
+      />
     </div>
   );
 }

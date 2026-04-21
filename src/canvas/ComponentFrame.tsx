@@ -7,6 +7,7 @@ import { useMetrics } from "@/store/metrics";
 import type { Rect } from "@/sandbox/messaging";
 import { setTextAtPath } from "@/ast/text";
 import { getClassNameAtPath, setClassAtPath } from "@/ast/tailwind";
+import { insertChildAtPath } from "@/ast/insert";
 
 type Props = {
   component: WonderComponent;
@@ -27,6 +28,7 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [sel, setSel] = useState<SelectionInfo | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ path: string; rect: Rect } | null>(null);
   const editingPath = useRef<string | null>(null);
   const draggingRef = useRef(false);
   const selectComponent = useProject((s) => s.selectComponent);
@@ -161,6 +163,23 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
             commitText(evt.path, evt.text);
             editingPath.current = null;
           }}
+          onDragOver={(evt) => {
+            if (evt.path && evt.rect) setDropTarget({ path: evt.path, rect: evt.rect });
+            else setDropTarget(null);
+          }}
+          onDragLeave={() => setDropTarget(null)}
+          onDrop={(evt) => {
+            setDropTarget(null);
+            const path = evt.path ?? "0";
+            try {
+              const next = insertChildAtPath(component.source, path, evt.snippet);
+              setSource(component.id, next);
+              selectComponent(component.id);
+              selectElement(path);
+            } catch (e) {
+              console.error(e);
+            }
+          }}
           onSize={(evt) => {
             setRootSize(component.id, { w: evt.width, h: evt.height });
             if (!draggingRef.current) setSize({ w: evt.width, h: evt.height });
@@ -178,6 +197,17 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
           </pre>
         ) : null}
         {selected && sel ? <SelectionOverlay sel={sel} /> : null}
+        {dropTarget ? (
+          <div
+            className="pointer-events-none absolute rounded-sm ring-2 ring-accent ring-offset-1 ring-offset-white/60 bg-accent/10"
+            style={{
+              left: dropTarget.rect.left,
+              top: dropTarget.rect.top,
+              width: dropTarget.rect.width,
+              height: dropTarget.rect.height,
+            }}
+          />
+        ) : null}
       </div>
       {selected && (
         <ResizeHandles

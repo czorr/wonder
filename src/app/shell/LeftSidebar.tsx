@@ -165,6 +165,7 @@ export function LeftSidebar() {
               key={p.id}
               icon={p.icon}
               label={p.label}
+              primitive={p}
               onClick={() => onPrimitiveClick(p)}
             />
           ))}
@@ -289,16 +290,31 @@ function TreeFile({
 function PrimitiveCard({
   icon: Icon,
   label,
+  primitive,
   onClick,
 }: {
   icon: LucideIcon;
   label: string;
+  primitive: Primitive;
   onClick?: () => void;
 }) {
+  const onDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData(
+      "application/x-wonder-primitive",
+      JSON.stringify({
+        snippet: primitive.snippet,
+        componentName: primitive.componentName,
+        size: primitive.size,
+      }),
+    );
+    e.dataTransfer.effectAllowed = "copy";
+  };
   return (
     <button
+      draggable
+      onDragStart={onDragStart}
       onClick={onClick}
-      className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-md border border-stroke bg-panel hover:border-stroke-strong hover:bg-panel-soft"
+      className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-md border border-stroke bg-panel hover:border-stroke-strong hover:bg-panel-soft active:cursor-grabbing"
     >
       <Icon size={16} strokeWidth={1.5} className="text-ink-soft" />
       <span className="text-[10px] text-ink-muted">{label}</span>

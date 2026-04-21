@@ -313,9 +313,15 @@
       );
 
       document.addEventListener("keydown", (e) => {
-        if (!editingEl) return;
-        if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
-        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); commitEdit(); }
+        if (editingEl) {
+          if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); commitEdit(); }
+          return;
+        }
+        if (e.key === "Backspace" || e.key === "Delete") {
+          e.preventDefault();
+          parent.postMessage({ type: "sandbox:deleteKey" }, "*");
+        }
       }, true);
 
       document.addEventListener("click", (e) => {
@@ -334,6 +340,53 @@
             type: "sandbox:hover",
             path: el.getAttribute("data-wonder-path"),
             rect: el.getBoundingClientRect().toJSON(),
+          },
+          "*",
+        );
+      });
+
+      const DRAG_MIME = "application/x-wonder-primitive";
+
+      function findDropTarget(target) {
+        if (!(target instanceof Element)) return null;
+        return target.closest("[data-wonder-path]");
+      }
+
+      document.addEventListener("dragover", (e) => {
+        // Only react to Wonder primitive drags.
+        const types = e.dataTransfer ? Array.from(e.dataTransfer.types) : [];
+        if (!types.includes(DRAG_MIME)) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+        const el = findDropTarget(e.target);
+        parent.postMessage(
+          {
+            type: "sandbox:dragOver",
+            path: el ? el.getAttribute("data-wonder-path") : "0",
+            rect: el ? el.getBoundingClientRect().toJSON() : null,
+          },
+          "*",
+        );
+      });
+
+      document.addEventListener("dragleave", (e) => {
+        if (e.relatedTarget) return;
+        parent.postMessage({ type: "sandbox:dragLeave" }, "*");
+      });
+
+      document.addEventListener("drop", (e) => {
+        const snippet = e.dataTransfer ? e.dataTransfer.getData(DRAG_MIME) : "";
+        if (!snippet) return;
+        e.preventDefault();
+        const el = findDropTarget(e.target);
+        let parsed = null;
+        try { parsed = JSON.parse(snippet); } catch {}
+        parent.postMessage(
+          {
+            type: "sandbox:drop",
+            path: el ? el.getAttribute("data-wonder-path") : "0",
+            snippet: parsed?.snippet ?? snippet,
+            name: parsed?.componentName,
           },
           "*",
         );

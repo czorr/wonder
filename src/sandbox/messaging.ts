@@ -35,7 +35,11 @@ export type SandboxIncoming =
       text: string;
     }
   | { type: "sandbox:textCommit"; path: string; text: string }
-  | { type: "sandbox:size"; width: number; height: number };
+  | { type: "sandbox:size"; width: number; height: number }
+  | { type: "sandbox:dragOver"; path: string | null; rect: Rect | null }
+  | { type: "sandbox:dragLeave" }
+  | { type: "sandbox:drop"; path: string | null; snippet: string; name?: string }
+  | { type: "sandbox:deleteKey" };
 
 export type SandboxOutgoing =
   | { type: "sandbox:render"; code: string; props?: Record<string, unknown> }

@@ -34,12 +34,17 @@ type SandboxProps = {
     evt: Extract<SandboxIncoming, { type: "sandbox:textCommit" }>,
   ) => void;
   onSize?: (evt: Extract<SandboxIncoming, { type: "sandbox:size" }>) => void;
+  onDragOver?: (
+    evt: Extract<SandboxIncoming, { type: "sandbox:dragOver" }>,
+  ) => void;
+  onDragLeave?: () => void;
+  onDrop?: (evt: Extract<SandboxIncoming, { type: "sandbox:drop" }>) => void;
   className?: string;
   style?: React.CSSProperties;
 };
 
 export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
-  { onReady, onRendered, onError, onSelect, onHover, onRect, onTextEdit, onTextCommit, onSize, className, style },
+  { onReady, onRendered, onError, onSelect, onHover, onRect, onTextEdit, onTextCommit, onSize, onDragOver, onDragLeave, onDrop, className, style },
   ref,
 ) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -87,11 +92,20 @@ export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
         case "sandbox:size":
           onSize?.(data);
           break;
+        case "sandbox:dragOver":
+          onDragOver?.(data);
+          break;
+        case "sandbox:dragLeave":
+          onDragLeave?.();
+          break;
+        case "sandbox:drop":
+          onDrop?.(data);
+          break;
       }
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [onReady, onRendered, onError, onSelect, onHover, onRect, onTextEdit, onTextCommit, onSize]);
+  }, [onReady, onRendered, onError, onSelect, onHover, onRect, onTextEdit, onTextCommit, onSize, onDragOver, onDragLeave, onDrop]);
 
   useImperativeHandle(
     ref,

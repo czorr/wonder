@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useProject } from "@/store/project";
 import { useCanvas } from "@/store/canvas";
 import { ComponentFrame } from "@/canvas/ComponentFrame";
+import { PRIMITIVES, buildComponentSource } from "@/primitives/snippets";
+import { removeAtPath } from "@/ast/insert";
 
 export function CanvasArea() {
   const order = useProject((s) => s.order);
@@ -9,6 +11,7 @@ export function CanvasArea() {
   const selectedId = useProject((s) => s.selectedComponentId);
   const selectComponent = useProject((s) => s.selectComponent);
   const deleteComponent = useProject((s) => s.deleteComponent);
+  const addComponent = useProject((s) => s.addComponent);
 
   const zoom = useCanvas((s) => s.zoom);
   const pan = useCanvas((s) => s.pan);
@@ -57,6 +60,36 @@ export function CanvasArea() {
     return () => el.removeEventListener("wheel", handler);
   }, []);
 
+  const deleteSelection = useCallback(() => {
+    const { selectedComponentId, selectedElementPath, components, setSource, selectElement } =
+      useProject.getState();
+    if (!selectedComponentId) return;
+    if (!selectedElementPath || selectedElementPath === "0") {
+      deleteComponent(selectedComponentId);
+      return;
+    }
+    const comp = components[selectedComponentId];
+    if (!comp) return;
+    try {
+      const next = removeAtPath(comp.source, selectedElementPath);
+      setSource(selectedComponentId, next);
+      selectElement(null);
+    } catch (err) {
+      console.error(err);
+    }
+  }, [deleteComponent]);
+
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const data = e.data;
+      if (data && typeof data === "object" && data.type === "sandbox:deleteKey") {
+        deleteSelection();
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [deleteSelection]);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === "Space" && !e.repeat) {
@@ -79,12 +112,8 @@ export function CanvasArea() {
         const t = e.target as HTMLElement | null;
         if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
         if (t && typeof t.closest === "function" && t.closest(".monaco-editor")) return;
-        // Only delete component when the frame itself (not a child element) is selected.
-        const { selectedComponentId, selectedElementPath } = useProject.getState();
-        if (selectedComponentId && (!selectedElementPath || selectedElementPath === "0")) {
-          e.preventDefault();
-          deleteComponent(selectedComponentId);
-        }
+        e.preventDefault();
+        deleteSelection();
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -125,11 +154,45 @@ export function CanvasArea() {
     selectComponent(null);
   };
 
+  const onDragOverBg = (e: React.DragEvent) => {
+    if (!Array.from(e.dataTransfer.types).includes("application/x-wonder-primitive")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  };
+
+  const onDropBg = (e: React.DragEvent) => {
+    const raw = e.dataTransfer.getData("application/x-wonder-primitive");
+    if (!raw) return;
+    e.preventDefault();
+    // If the event was handled by a frame's iframe, that drop already fired inside
+    // the sandbox — we only reach here for drops on empty canvas.
+    let parsed: { snippet: string; componentName: string; size: { w: number; h: number } } | null = null;
+    try { parsed = JSON.parse(raw); } catch { return; }
+    if (!parsed) return;
+    const primitive = PRIMITIVES.find((p) => p.componentName === parsed!.componentName) ?? PRIMITIVES[0];
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = Math.round((e.clientX - rect.left - pan.x) / zoom);
+    const y = Math.round((e.clientY - rect.top - pan.y) / zoom);
+    addComponent({
+      name: primitive.componentName,
+      filename: `${primitive.componentName}.tsx`,
+      folder: "components",
+      source: buildComponentSource(primitive, primitive.componentName),
+      x,
+      y,
+      width: primitive.size.w,
+      height: primitive.size.h,
+    });
+  };
+
   return (
     <section
       ref={containerRef}
       onWheel={onWheel}
       onMouseDown={onBgMouseDown}
+      onDragOver={onDragOverBg}
+      onDrop={onDropBg}
       className="relative flex min-h-0 flex-1 overflow-hidden bg-canvas"
       style={{ cursor: panning ? "grabbing" : handActive ? "grab" : undefined }}
     >
