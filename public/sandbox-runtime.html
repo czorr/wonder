@@ -91,6 +91,39 @@
       }
 
       let CurrentComponent = null;
+      let selectedPath = null;
+
+      function hasOnlyTextChildren(el) {
+        for (const child of el.childNodes) {
+          if (child.nodeType === 1) return false;
+        }
+        return true;
+      }
+
+      function emitRect(path) {
+        const el = path
+          ? document.querySelector(`[data-wonder-path="${CSS.escape(path)}"]`)
+          : null;
+        parent.postMessage(
+          {
+            type: "sandbox:rect",
+            path: path,
+            rect: el ? el.getBoundingClientRect().toJSON() : null,
+            tag: el ? el.tagName.toLowerCase() : "",
+            className: el ? el.getAttribute("class") || "" : "",
+          },
+          "*",
+        );
+      }
+
+      const observer = new MutationObserver(() => {
+        if (selectedPath) emitRect(selectedPath);
+      });
+      observer.observe(document.getElementById("root"), {
+        childList: true,
+        subtree: true,
+        attributes: true,
+      });
 
       window.addEventListener("message", async (e) => {
         const msg = e.data;
@@ -120,7 +153,72 @@
         } else if (msg.type === "sandbox:setProps") {
           currentProps = msg.props || {};
           if (CurrentComponent) render(CurrentComponent);
+        } else if (msg.type === "sandbox:setSelection") {
+          selectedPath = msg.path;
+          requestAnimationFrame(() => emitRect(selectedPath));
         }
+      });
+
+      document.addEventListener(
+        "click",
+        (e) => {
+          const target = e.target;
+          if (!(target instanceof Element)) return;
+          const el = target.closest("[data-wonder-path]");
+          if (!el) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const path = el.getAttribute("data-wonder-path");
+          parent.postMessage(
+            {
+              type: "sandbox:select",
+              path,
+              rect: el.getBoundingClientRect().toJSON(),
+              tag: el.tagName.toLowerCase(),
+              className: el.getAttribute("class") || "",
+            },
+            "*",
+          );
+        },
+        true,
+      );
+
+      document.addEventListener(
+        "dblclick",
+        (e) => {
+          const target = e.target;
+          if (!(target instanceof Element)) return;
+          const el = target.closest("[data-wonder-path]");
+          if (!el) return;
+          if (!hasOnlyTextChildren(el)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          parent.postMessage(
+            {
+              type: "sandbox:textEdit",
+              path: el.getAttribute("data-wonder-path"),
+              rect: el.getBoundingClientRect().toJSON(),
+              text: el.textContent || "",
+            },
+            "*",
+          );
+        },
+        true,
+      );
+
+      document.addEventListener("mouseover", (e) => {
+        const target = e.target;
+        if (!(target instanceof Element)) return;
+        const el = target.closest("[data-wonder-path]");
+        if (!el) return;
+        parent.postMessage(
+          {
+            type: "sandbox:hover",
+            path: el.getAttribute("data-wonder-path"),
+            rect: el.getBoundingClientRect().toJSON(),
+          },
+          "*",
+        );
       });
 
       parent.postMessage({ type: "sandbox:ready" }, "*");

@@ -5,22 +5,35 @@ import {
   useRef,
   useState,
 } from "react";
-import { isSandboxMessage, type SandboxOutgoing } from "@/sandbox/messaging";
+import {
+  isSandboxMessage,
+  type SandboxIncoming,
+  type SandboxOutgoing,
+} from "@/sandbox/messaging";
 
 export type SandboxHandle = {
   render: (code: string, props?: Record<string, unknown>) => void;
   setProps: (props: Record<string, unknown>) => void;
+  setSelection: (path: string | null) => void;
 };
 
 type SandboxProps = {
   onReady?: () => void;
   onRendered?: () => void;
   onError?: (message: string) => void;
+  onSelect?: (
+    evt: Extract<SandboxIncoming, { type: "sandbox:select" }>,
+  ) => void;
+  onHover?: (evt: Extract<SandboxIncoming, { type: "sandbox:hover" }>) => void;
+  onRect?: (evt: Extract<SandboxIncoming, { type: "sandbox:rect" }>) => void;
+  onTextEdit?: (
+    evt: Extract<SandboxIncoming, { type: "sandbox:textEdit" }>,
+  ) => void;
   className?: string;
 };
 
 export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
-  { onReady, onRendered, onError, className },
+  { onReady, onRendered, onError, onSelect, onHover, onRect, onTextEdit, className },
   ref,
 ) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -31,35 +44,48 @@ export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
     function onMessage(e: MessageEvent) {
       if (e.source !== iframeRef.current?.contentWindow) return;
       if (!isSandboxMessage(e.data)) return;
-      if (e.data.type === "sandbox:ready") {
-        setReady(true);
-        onReady?.();
-        if (pendingRef.current) {
-          iframeRef.current?.contentWindow?.postMessage(
-            pendingRef.current,
-            "*",
-          );
-          pendingRef.current = null;
-        }
-      } else if (e.data.type === "sandbox:rendered") {
-        onRendered?.();
-      } else if (e.data.type === "sandbox:error") {
-        onError?.(e.data.message);
+      const data = e.data;
+      switch (data.type) {
+        case "sandbox:ready":
+          setReady(true);
+          onReady?.();
+          if (pendingRef.current) {
+            iframeRef.current?.contentWindow?.postMessage(
+              pendingRef.current,
+              "*",
+            );
+            pendingRef.current = null;
+          }
+          break;
+        case "sandbox:rendered":
+          onRendered?.();
+          break;
+        case "sandbox:error":
+          onError?.(data.message);
+          break;
+        case "sandbox:select":
+          onSelect?.(data);
+          break;
+        case "sandbox:hover":
+          onHover?.(data);
+          break;
+        case "sandbox:rect":
+          onRect?.(data);
+          break;
+        case "sandbox:textEdit":
+          onTextEdit?.(data);
+          break;
       }
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [onReady, onRendered, onError]);
+  }, [onReady, onRendered, onError, onSelect, onHover, onRect, onTextEdit]);
 
   useImperativeHandle(
     ref,
     () => ({
       render(code, props) {
-        const msg: SandboxOutgoing = {
-          type: "sandbox:render",
-          code,
-          props,
-        };
+        const msg: SandboxOutgoing = { type: "sandbox:render", code, props };
         if (ready && iframeRef.current?.contentWindow) {
           iframeRef.current.contentWindow.postMessage(msg, "*");
         } else {
@@ -69,6 +95,12 @@ export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
       setProps(props) {
         iframeRef.current?.contentWindow?.postMessage(
           { type: "sandbox:setProps", props } satisfies SandboxOutgoing,
+          "*",
+        );
+      },
+      setSelection(path) {
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: "sandbox:setSelection", path } satisfies SandboxOutgoing,
           "*",
         );
       },

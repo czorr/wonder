@@ -1,11 +1,12 @@
-import * as esbuild from "esbuild-wasm";
+import { initialize, transform } from "esbuild-wasm";
 import wasmURL from "esbuild-wasm/esbuild.wasm?url";
+import { injectWonderPaths } from "@/ast/mutate";
 
 let initPromise: Promise<void> | null = null;
 
 export function initBundler(): Promise<void> {
   if (!initPromise) {
-    initPromise = esbuild.initialize({
+    initPromise = initialize({
       wasmURL,
       worker: true,
     });
@@ -20,7 +21,13 @@ export type BundleResult =
 export async function bundle(source: string): Promise<BundleResult> {
   try {
     await initBundler();
-    const result = await esbuild.transform(source, {
+    let withPaths = source;
+    try {
+      withPaths = injectWonderPaths(source);
+    } catch {
+      // mid-edit: fall back to raw source
+    }
+    const result = await transform(withPaths, {
       loader: "tsx",
       jsx: "automatic",
       jsxImportSource: "react",

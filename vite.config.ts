@@ -20,7 +20,7 @@ export default defineConfig(async () => ({
     "process.env.BABEL_8_BREAKING": "false",
   },
   optimizeDeps: {
-    exclude: ["esbuild-wasm"],
+    include: ["esbuild-wasm"],
   },
   clearScreen: false,
   server: {
