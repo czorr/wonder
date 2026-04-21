@@ -34,12 +34,14 @@ export type SandboxIncoming =
       rect: Rect;
       text: string;
     }
+  | { type: "sandbox:textCommit"; path: string; text: string }
   | { type: "sandbox:size"; width: number; height: number };
 
 export type SandboxOutgoing =
   | { type: "sandbox:render"; code: string; props?: Record<string, unknown> }
   | { type: "sandbox:setProps"; props: Record<string, unknown> }
-  | { type: "sandbox:setSelection"; path: string | null };
+  | { type: "sandbox:setSelection"; path: string | null }
+  | { type: "sandbox:setViewport"; width: number | null };
 
 export function isSandboxMessage(data: unknown): data is SandboxIncoming {
   return (

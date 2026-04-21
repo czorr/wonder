@@ -15,6 +15,7 @@ export type SandboxHandle = {
   render: (code: string, props?: Record<string, unknown>) => void;
   setProps: (props: Record<string, unknown>) => void;
   setSelection: (path: string | null) => void;
+  setViewport: (width: number | null) => void;
 };
 
 type SandboxProps = {
@@ -29,12 +30,16 @@ type SandboxProps = {
   onTextEdit?: (
     evt: Extract<SandboxIncoming, { type: "sandbox:textEdit" }>,
   ) => void;
+  onTextCommit?: (
+    evt: Extract<SandboxIncoming, { type: "sandbox:textCommit" }>,
+  ) => void;
   onSize?: (evt: Extract<SandboxIncoming, { type: "sandbox:size" }>) => void;
   className?: string;
+  style?: React.CSSProperties;
 };
 
 export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
-  { onReady, onRendered, onError, onSelect, onHover, onRect, onTextEdit, onSize, className },
+  { onReady, onRendered, onError, onSelect, onHover, onRect, onTextEdit, onTextCommit, onSize, className, style },
   ref,
 ) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -76,6 +81,9 @@ export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
         case "sandbox:textEdit":
           onTextEdit?.(data);
           break;
+        case "sandbox:textCommit":
+          onTextCommit?.(data);
+          break;
         case "sandbox:size":
           onSize?.(data);
           break;
@@ -83,7 +91,7 @@ export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [onReady, onRendered, onError, onSelect, onHover, onRect, onTextEdit, onSize]);
+  }, [onReady, onRendered, onError, onSelect, onHover, onRect, onTextEdit, onTextCommit, onSize]);
 
   useImperativeHandle(
     ref,
@@ -108,6 +116,12 @@ export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
           "*",
         );
       },
+      setViewport(width) {
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: "sandbox:setViewport", width } satisfies SandboxOutgoing,
+          "*",
+        );
+      },
     }),
     [ready],
   );
@@ -119,6 +133,7 @@ export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
       title="Wonder sandbox"
       sandbox="allow-scripts allow-same-origin"
       className={className}
+      style={style}
     />
   );
 });

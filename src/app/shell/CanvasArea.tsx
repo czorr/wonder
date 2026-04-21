@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useProject } from "@/store/project";
+import { useCanvas } from "@/store/canvas";
 import { ComponentFrame } from "@/canvas/ComponentFrame";
 
 export function CanvasArea() {
@@ -8,18 +9,37 @@ export function CanvasArea() {
   const selectedId = useProject((s) => s.selectedComponentId);
   const selectComponent = useProject((s) => s.selectComponent);
 
-  const [zoom, setZoom] = useState(0.9);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const zoom = useCanvas((s) => s.zoom);
+  const pan = useCanvas((s) => s.pan);
+  const setZoom = useCanvas((s) => s.setZoom);
+  const setPan = useCanvas((s) => s.setPan);
+
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      setZoom((z) => Math.min(2, Math.max(0.25, z - e.deltaY * 0.0015)));
-    } else {
-      setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
-    }
-  }, []);
+  const onWheel = useCallback(
+    (e: React.WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        setZoom((z) => {
+          const factor = e.deltaY < 0 ? 1.05 : 0.95;
+          const next = Math.min(4, Math.max(0.1, z * factor));
+          // Zoom toward cursor
+          setPan((p) => ({
+            x: mx - (mx - p.x) * (next / z),
+            y: my - (my - p.y) * (next / z),
+          }));
+          return next;
+        });
+      } else {
+        setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
+      }
+    },
+    [setZoom, setPan],
+  );
 
   useEffect(() => {
     const el = containerRef.current;
@@ -32,7 +52,7 @@ export function CanvasArea() {
   }, []);
 
   const onBgMouseDown = (e: React.MouseEvent) => {
-    if (e.target !== containerRef.current) return;
+    if (e.target !== containerRef.current && e.target !== e.currentTarget) return;
     selectComponent(null);
   };
 
@@ -43,6 +63,7 @@ export function CanvasArea() {
       onMouseDown={onBgMouseDown}
       className="relative flex min-h-0 flex-1 overflow-hidden bg-canvas"
     >
+      {/* Dot grid */}
       <div
         className="pointer-events-none absolute inset-0"
         style={{
@@ -53,6 +74,7 @@ export function CanvasArea() {
         }}
       />
 
+      {/* Canvas content */}
       <div
         className="absolute left-0 top-0 origin-top-left"
         style={{

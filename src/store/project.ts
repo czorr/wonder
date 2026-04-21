@@ -26,6 +26,7 @@ type State = {
   selectElement: (path: string | null) => void;
   setSource: (id: ComponentId, source: string) => void;
   moveFrame: (id: ComponentId, x: number, y: number) => void;
+  resizeFrame: (id: ComponentId, x: number, y: number, w: number, h: number) => void;
   openTab: (id: ComponentId) => void;
   closeTab: (id: ComponentId) => void;
   setActiveTab: (id: ComponentId) => void;
@@ -196,6 +197,14 @@ export const useProject = create<State>((set) => ({
       components: {
         ...s.components,
         [id]: { ...s.components[id], x, y },
+      },
+    }));
+  },
+  resizeFrame(id, x, y, w, h) {
+    set((s) => ({
+      components: {
+        ...s.components,
+        [id]: { ...s.components[id], x, y, width: w, height: h },
       },
     }));
   },

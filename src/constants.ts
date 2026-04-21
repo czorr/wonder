@@ -7,7 +7,7 @@ export const ALLOWED_DEPS = [
 ] as const;
 
 export const SOURCE_OF_TRUTH = "code-string" as const;
-export const HOT_RELOAD_DEBOUNCE_MS = 300;
+export const HOT_RELOAD_DEBOUNCE_MS = 80;
 export const SUPPORTED_BREAKPOINTS = [
   "base",
   "sm",

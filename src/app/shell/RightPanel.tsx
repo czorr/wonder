@@ -149,20 +149,46 @@ export function RightPanel() {
   const currentRadius = find((c) => RADIUS_VALUES.has(c));
   const currentBorderW = find((c) => BORDER_WIDTH_VALUES.has(c)) ?? "border-0";
 
+  const baselineRef = useRef<string | null>(null);
+
+  const captureBaseline = () => {
+    if (component) baselineRef.current = component.source;
+  };
+  const clearBaseline = () => {
+    baselineRef.current = null;
+  };
+  const cancelPreview = () => {
+    if (component && baselineRef.current != null) {
+      setSource(component.id, baselineRef.current);
+    }
+    baselineRef.current = null;
+  };
+
   const swap = (oldClass: string | undefined, next: string) => {
     if (!component) return;
     try {
-      const updated = setClassAtPath(
-        component.source,
-        path,
-        oldClass ?? next,
-        next,
-      );
+      const base = baselineRef.current ?? component.source;
+      const updated = setClassAtPath(base, path, oldClass ?? next, next);
       setSource(component.id, updated);
     } catch (e) {
       console.error(e);
     }
   };
+
+  const preview = (oldClass: string | undefined) => ({
+    onOpen: captureBaseline,
+    onHover: (v: string) => swap(oldClass, v),
+    onCancel: cancelPreview,
+  });
+  const commit = (oldClass: string | undefined, next: string) => {
+    swap(oldClass, next);
+    clearBaseline();
+  };
+  const previewColor = (oldClass: string | undefined, prefix: string) => ({
+    onOpen: captureBaseline,
+    onHover: (name: string) => name && swap(oldClass, `${prefix}-${name}`),
+    onCancel: cancelPreview,
+  });
 
   const colorName = (cls: string | undefined, prefix: string): PaletteColor | undefined => {
     if (!cls) return undefined;
@@ -209,11 +235,21 @@ export function RightPanel() {
         </Group>
 
         <Group title="Spacing">
-          <DualRow label="Padding">
+          <DualRow
+            label="Padding"
+            scrub={{
+              current: currentPadding ?? "p-0",
+              values: SPACING_SCALE.map((s) => `p-${s.n}`),
+              onChange: (v) => swap(currentPadding, v),
+              onCommit: clearBaseline,
+              onStart: captureBaseline,
+            }}
+          >
             <SpacingSelect
               current={currentPadding}
               prefix="p"
-              onChange={(v) => swap(currentPadding, v)}
+              onChange={(v) => commit(currentPadding, v)}
+              preview={preview(currentPadding)}
             />
             <InputBox
               value={String(spacingPx(currentPadding, "p-") ?? 0)}
@@ -221,11 +257,21 @@ export function RightPanel() {
               readOnly
             />
           </DualRow>
-          <DualRow label="Gap">
+          <DualRow
+            label="Gap"
+            scrub={{
+              current: currentGap ?? "gap-0",
+              values: SPACING_SCALE.map((s) => `gap-${s.n}`),
+              onChange: (v) => swap(currentGap, v),
+              onCommit: clearBaseline,
+              onStart: captureBaseline,
+            }}
+          >
             <SpacingSelect
               current={currentGap}
               prefix="gap"
-              onChange={(v) => swap(currentGap, v)}
+              onChange={(v) => commit(currentGap, v)}
+              preview={preview(currentGap)}
             />
             <InputBox
               value={String(spacingPx(currentGap, "gap-") ?? 0)}
@@ -239,7 +285,16 @@ export function RightPanel() {
           <DualRow label="Family">
             <InputBox value="Inter" hint="font-sans" readOnly full />
           </DualRow>
-          <DualRow label="Size">
+          <DualRow
+            label="Size"
+            scrub={{
+              current: currentSize ?? "text-base",
+              values: TEXT_SIZES.map((s) => s.value),
+              onChange: (v) => swap(currentSize, v),
+              onCommit: clearBaseline,
+              onStart: captureBaseline,
+            }}
+          >
             <SelectBox
               value={currentSize ?? "text-base"}
               hint={String(TEXT_SIZES.find((s) => s.value === currentSize)?.px ?? 16)}
@@ -248,7 +303,8 @@ export function RightPanel() {
                 label: s.value.replace("text-", ""),
                 right: `${s.px}px`,
               }))}
-              onChange={(v) => swap(currentSize, v)}
+              onChange={(v) => commit(currentSize, v)}
+              {...preview(currentSize)}
             />
             <InputBox
               value={String(TEXT_SIZES.find((s) => s.value === currentSize)?.px ?? 16)}
@@ -258,7 +314,16 @@ export function RightPanel() {
               readOnly
             />
           </DualRow>
-          <DualRow label="Weight">
+          <DualRow
+            label="Weight"
+            scrub={{
+              current: currentWeight ?? "font-normal",
+              values: FONT_WEIGHTS.map((f) => f.value),
+              onChange: (v) => swap(currentWeight, v),
+              onCommit: clearBaseline,
+              onStart: captureBaseline,
+            }}
+          >
             <SelectBox
               value={currentWeight ?? "font-normal"}
               hint={String(
@@ -269,7 +334,8 @@ export function RightPanel() {
                 label: f.value.replace("font-", ""),
                 right: String(f.n),
               }))}
-              onChange={(v) => swap(currentWeight, v)}
+              onChange={(v) => commit(currentWeight, v)}
+              {...preview(currentWeight)}
             />
             <InputBox
               value={String(
@@ -307,23 +373,26 @@ export function RightPanel() {
           <DualRow label="Fill">
             <ColorDropdown
               color={bgColor}
-              onChange={(name) => swap(currentBg, `bg-${name}`)}
+              onChange={(name) => commit(currentBg, `bg-${name}`)}
               full
+              {...previewColor(currentBg, "bg")}
             />
           </DualRow>
           <DualRow label="Text">
             <ColorDropdown
               color={textColor}
-              onChange={(name) => swap(currentTextColor, `text-${name}`)}
+              onChange={(name) => commit(currentTextColor, `text-${name}`)}
               full
+              {...previewColor(currentTextColor, "text")}
             />
           </DualRow>
           <DualRow label="Border">
             <ColorDropdown
               color={borderColor}
               placeholder="none"
-              onChange={(name) => swap(currentBorderColor, `border-${name}`)}
+              onChange={(name) => commit(currentBorderColor, `border-${name}`)}
               full
+              {...previewColor(currentBorderColor, "border")}
             />
           </DualRow>
           <div className="col-span-2 -mx-0 mt-1 flex items-center gap-1">
@@ -354,7 +423,16 @@ export function RightPanel() {
         </Group>
 
         <Group title="Borders">
-          <DualRow label="Radius">
+          <DualRow
+            label="Radius"
+            scrub={{
+              current: currentRadius ?? "rounded-none",
+              values: RADIUS_OPTIONS.map((r) => r.value),
+              onChange: (v) => swap(currentRadius, v),
+              onCommit: clearBaseline,
+              onStart: captureBaseline,
+            }}
+          >
             <SelectBox
               value={currentRadius ?? "rounded-none"}
               hint={String(
@@ -365,11 +443,21 @@ export function RightPanel() {
                 label: r.value.replace("rounded", "rounded") || "rounded",
                 right: `${r.px}px`,
               }))}
-              onChange={(v) => swap(currentRadius, v)}
+              onChange={(v) => commit(currentRadius, v)}
+              {...preview(currentRadius)}
             />
             <InputBox value="all" hint="—" readOnly />
           </DualRow>
-          <DualRow label="Width">
+          <DualRow
+            label="Width"
+            scrub={{
+              current: currentBorderW,
+              values: BORDER_WIDTHS.map((b) => b.value),
+              onChange: (v) => swap(currentBorderW, v),
+              onCommit: clearBaseline,
+              onStart: captureBaseline,
+            }}
+          >
             <SelectBox
               value={currentBorderW}
               hint={String(
@@ -380,7 +468,8 @@ export function RightPanel() {
                 label: b.value,
                 right: `${b.px}px`,
               }))}
-              onChange={(v) => swap(currentBorderW, v)}
+              onChange={(v) => commit(currentBorderW, v)}
+              {...preview(currentBorderW)}
             />
             <InputBox
               value={String(
@@ -481,18 +570,77 @@ function AddButton() {
   );
 }
 
+type ScrubConfig = {
+  current: string;
+  values: string[];
+  onChange: (v: string) => void;
+  onStart?: () => void;
+  onCommit?: () => void;
+};
+
 function DualRow({
   label,
   children,
+  scrub,
 }: {
   label: string;
   children: React.ReactNode;
+  scrub?: ScrubConfig;
 }) {
   return (
     <div className="grid min-w-0 grid-cols-[46px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-1.5">
-      <span className="truncate text-[10.5px] text-ink-muted">{label}</span>
+      {scrub ? (
+        <ScrubLabel label={label} scrub={scrub} />
+      ) : (
+        <span className="truncate text-[10.5px] text-ink-muted">{label}</span>
+      )}
       {children}
     </div>
+  );
+}
+
+function ScrubLabel({ label, scrub }: { label: string; scrub: ScrubConfig }) {
+  const [dragging, setDragging] = useState(false);
+  const onMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startIdx = Math.max(0, scrub.values.indexOf(scrub.current));
+    scrub.onStart?.();
+    let moved = false;
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX;
+      if (Math.abs(dx) > 2) moved = true;
+      const steps = Math.round(dx / 4);
+      const idx = Math.min(
+        scrub.values.length - 1,
+        Math.max(0, startIdx + steps),
+      );
+      const next = scrub.values[idx];
+      if (next && next !== scrub.current) scrub.onChange(next);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setDragging(false);
+      scrub.onCommit?.();
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    setDragging(true);
+    void moved;
+  };
+  return (
+    <span
+      onMouseDown={onMouseDown}
+      title="Drag to scrub"
+      className={
+        "select-none truncate text-[10.5px] text-ink-muted cursor-ew-resize hover:text-ink " +
+        (dragging ? "text-accent-ink" : "")
+      }
+    >
+      {label}
+    </span>
   );
 }
 
@@ -561,22 +709,35 @@ function SelectBox({
   hint,
   options,
   onChange,
+  onOpen,
+  onHover,
+  onCancel,
 }: {
   value: string;
   hint: string;
   options: { value: string; label: string; right?: string }[];
   onChange: (v: string) => void;
+  onOpen?: () => void;
+  onHover?: (v: string) => void;
+  onCancel?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const ref = useOutsideClick<HTMLDivElement>(open, () => setOpen(false));
+  const close = (cancel: boolean) => {
+    setOpen(false);
+    if (cancel) onCancel?.();
+  };
+  const ref = useOutsideClick<HTMLDivElement>(open, () => close(true));
   const filtered = options.filter((o) =>
     o.label.toLowerCase().includes(q.toLowerCase()),
   );
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          if (!open) onOpen?.();
+          setOpen((o) => !o);
+        }}
         className="flex h-7 w-full items-center gap-1 rounded-md border border-stroke bg-white px-2 hover:border-stroke-strong"
       >
         <span className="min-w-0 flex-1 truncate text-left text-[11px] text-ink">
@@ -588,7 +749,10 @@ function SelectBox({
         <ChevronDown size={11} className="text-ink-faint" strokeWidth={2} />
       </button>
       {open ? (
-        <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 rounded-md border border-stroke bg-white p-1 shadow-lg">
+        <div
+          onMouseLeave={() => onHover?.(value)}
+          className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 rounded-md border border-stroke bg-white p-1 shadow-lg"
+        >
           <div className="flex items-center gap-1 rounded border border-stroke bg-panel-soft px-1.5 py-1">
             <Search size={11} className="text-ink-faint" strokeWidth={2} />
             <input
@@ -605,9 +769,10 @@ function SelectBox({
               return (
                 <button
                   key={o.value}
+                  onMouseEnter={() => onHover?.(o.value)}
                   onClick={() => {
                     onChange(o.value);
-                    setOpen(false);
+                    close(false);
                   }}
                   className={
                     "flex w-full items-center gap-2 rounded px-2 py-1 text-[11px] " +
@@ -641,10 +806,16 @@ function SpacingSelect({
   current,
   prefix,
   onChange,
+  preview,
 }: {
   current: string | undefined;
   prefix: string;
   onChange: (v: string) => void;
+  preview?: {
+    onOpen?: () => void;
+    onHover?: (v: string) => void;
+    onCancel?: () => void;
+  };
 }) {
   const value = current ?? `${prefix}-0`;
   const label = value.replace(`${prefix}-`, "") || "0";
@@ -659,6 +830,7 @@ function SpacingSelect({
       hint={label}
       options={options}
       onChange={onChange}
+      {...preview}
     />
   );
 }
@@ -668,15 +840,25 @@ function ColorDropdown({
   onChange,
   placeholder,
   full,
+  onOpen,
+  onHover,
+  onCancel,
 }: {
   color: PaletteColor | undefined;
   onChange: (name: string) => void;
   placeholder?: string;
   full?: boolean;
+  onOpen?: () => void;
+  onHover?: (name: string) => void;
+  onCancel?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const ref = useOutsideClick<HTMLDivElement>(open, () => setOpen(false));
+  const close = (cancel: boolean) => {
+    setOpen(false);
+    if (cancel) onCancel?.();
+  };
+  const ref = useOutsideClick<HTMLDivElement>(open, () => close(true));
   const filtered = useMemo(
     () =>
       q
@@ -689,7 +871,10 @@ function ColorDropdown({
   return (
     <div ref={ref} className={"relative " + (full ? "col-span-2" : "")}>
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          if (!open) onOpen?.();
+          setOpen((o) => !o);
+        }}
         className="flex h-7 w-full items-center gap-2 rounded-md border border-stroke bg-white px-1.5 hover:border-stroke-strong"
       >
         {color ? (
@@ -716,7 +901,10 @@ function ColorDropdown({
         </span>
       </button>
       {open ? (
-        <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 rounded-md border border-stroke bg-white p-1 shadow-lg">
+        <div
+          onMouseLeave={() => onHover?.(color?.name ?? "")}
+          className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 rounded-md border border-stroke bg-white p-1 shadow-lg"
+        >
           <div className="flex items-center gap-1 rounded border border-stroke bg-panel-soft px-1.5 py-1">
             <Search size={11} className="text-ink-faint" strokeWidth={2} />
             <input
@@ -733,9 +921,10 @@ function ColorDropdown({
               return (
                 <button
                   key={p.name}
+                  onMouseEnter={() => onHover?.(p.name)}
                   onClick={() => {
                     onChange(p.name);
-                    setOpen(false);
+                    close(false);
                   }}
                   className={
                     "flex w-full items-center gap-2 rounded px-1.5 py-1 text-[11px] " +

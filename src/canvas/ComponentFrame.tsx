@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Sandbox, type SandboxHandle } from "@/sandbox/Sandbox";
 import { bundle } from "@/sandbox/bundler";
 import { HOT_RELOAD_DEBOUNCE_MS } from "@/constants";
@@ -19,23 +19,18 @@ type SelectionInfo = {
   className: string;
 };
 
-type TextEdit = {
-  path: string;
-  rect: Rect;
-  text: string;
-};
-
 export function ComponentFrame({ component, selected, zoom }: Props) {
   const sandboxRef = useRef<SandboxHandle>(null);
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [sel, setSel] = useState<SelectionInfo | null>(null);
-  const [edit, setEdit] = useState<TextEdit | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const editingPath = useRef<string | null>(null);
   const selectComponent = useProject((s) => s.selectComponent);
   const selectElement = useProject((s) => s.selectElement);
   const selectedElementPath = useProject((s) => s.selectedElementPath);
   const moveFrame = useProject((s) => s.moveFrame);
+  const resizeFrame = useProject((s) => s.resizeFrame);
   const setSource = useProject((s) => s.setSource);
 
   useEffect(() => {
@@ -83,15 +78,13 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
     window.addEventListener("mouseup", onUp);
   };
 
-  const commitText = (next: string) => {
-    if (!edit) return;
+  const commitText = (path: string, next: string) => {
     try {
-      const updated = setTextAtPath(component.source, edit.path, next);
+      const updated = setTextAtPath(component.source, path, next);
       setSource(component.id, updated);
     } catch (e) {
       console.error(e);
     }
-    setEdit(null);
   };
 
   return (
@@ -120,7 +113,7 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
           {Math.round(size?.h ?? component.height)}
         </span>
       </div>
-      <div className="relative h-full w-full overflow-visible">
+      <div className="relative h-full w-full overflow-hidden">
         <Sandbox
           ref={sandboxRef}
           onReady={() => setReady(true)}
@@ -150,25 +143,36 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
           onTextEdit={(evt) => {
             selectComponent(component.id);
             selectElement(evt.path);
-            setEdit({ path: evt.path, rect: evt.rect, text: evt.text.trim() });
+            editingPath.current = evt.path;
+          }}
+          onTextCommit={(evt) => {
+            commitText(evt.path, evt.text);
+            editingPath.current = null;
           }}
           onSize={(evt) => setSize({ w: evt.width, h: evt.height })}
-          className="h-full w-full border-0"
+          className="absolute left-0 top-0 border-0"
+          style={{ width: 2000, height: 1200, background: "transparent" }}
         />
         {err ? (
           <pre className="absolute inset-2 overflow-auto rounded-md border border-red-300 bg-red-50 p-2 text-[10px] text-red-700">
             {err}
           </pre>
         ) : null}
-        {selected && sel && !edit ? <SelectionOverlay sel={sel} /> : null}
-        {edit ? (
-          <TextEditor
-            edit={edit}
-            onCommit={commitText}
-            onCancel={() => setEdit(null)}
-          />
-        ) : null}
+        {selected && sel ? <SelectionOverlay sel={sel} /> : null}
       </div>
+      {selected && (
+        <ResizeHandles
+          component={component}
+          size={size}
+          zoom={zoom}
+          sandboxRef={sandboxRef}
+          onResize={(x, y, w, h) => {
+            setSize({ w, h });
+            sandboxRef.current?.setViewport(w);
+            resizeFrame(component.id, x, y, w, h);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -209,6 +213,77 @@ function SelectionOverlay({ sel }: { sel: SelectionInfo }) {
   );
 }
 
+type ResizeHandlesProps = {
+  component: WonderComponent;
+  size: { w: number; h: number } | null;
+  zoom: number;
+  sandboxRef: React.RefObject<SandboxHandle | null>;
+  onResize: (x: number, y: number, w: number, h: number) => void;
+};
+
+const CURSORS = {
+  tl: "nw-resize",
+  tr: "ne-resize",
+  bl: "sw-resize",
+  br: "se-resize",
+} as const;
+
+function ResizeHandles({ component, size, zoom, sandboxRef, onResize }: ResizeHandlesProps) {
+  const w = size?.w ?? component.width;
+  const h = size?.h ?? component.height;
+
+  const onMouseDown = (e: React.MouseEvent, corner: "tl" | "tr" | "bl" | "br") => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const origX = component.x;
+    const origY = component.y;
+    const origW = w;
+    const origH = h;
+
+    const onMove = (ev: MouseEvent) => {
+      const dx = (ev.clientX - startX) / zoom;
+      const dy = (ev.clientY - startY) / zoom;
+      let nx = origX, ny = origY, nw = origW, nh = origH;
+      if (corner === "br") { nw = Math.max(80, origW + dx); nh = Math.max(40, origH + dy); }
+      if (corner === "bl") { nx = origX + dx; nw = Math.max(80, origW - dx); nh = Math.max(40, origH + dy); }
+      if (corner === "tr") { ny = origY + dy; nw = Math.max(80, origW + dx); nh = Math.max(40, origH - dy); }
+      if (corner === "tl") { nx = origX + dx; ny = origY + dy; nw = Math.max(80, origW - dx); nh = Math.max(40, origH - dy); }
+      sandboxRef.current?.setViewport(nw);
+      onResize(nx, ny, nw, nh);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  return (
+    <>
+      {(["tl", "tr", "bl", "br"] as const).map((corner) => {
+        const isRight = corner.endsWith("r");
+        const isBottom = corner.startsWith("b");
+        return (
+          <div
+            key={corner}
+            className="absolute z-20 size-3 rounded-sm border-2 border-accent bg-white"
+            style={{
+              cursor: CURSORS[corner],
+              left: isRight ? w - 6 : -6,
+              top: isBottom ? h - 6 : -6,
+            }}
+            onMouseDown={(e) => onMouseDown(e, corner)}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 function Corner({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {
   const map: Record<typeof pos, string> = {
     tl: "-left-[3px] -top-[3px]",
@@ -226,46 +301,3 @@ function Corner({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {
   );
 }
 
-function TextEditor({
-  edit,
-  onCommit,
-  onCancel,
-}: {
-  edit: TextEdit;
-  onCommit: (v: string) => void;
-  onCancel: () => void;
-}) {
-  const [value, setValue] = useState(edit.text);
-  const ref = useRef<HTMLTextAreaElement | null>(null);
-  useEffect(() => {
-    ref.current?.focus();
-    ref.current?.select();
-  }, []);
-  return (
-    <div className="absolute inset-0 z-10">
-      <textarea
-        ref={ref}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={() => onCommit(value)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            e.preventDefault();
-            onCancel();
-          } else if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            onCommit(value);
-          }
-        }}
-        className="absolute resize-none rounded-[3px] border border-accent bg-white px-1 outline-none ring-2 ring-accent/30"
-        style={{
-          left: edit.rect.left,
-          top: edit.rect.top,
-          width: Math.max(edit.rect.width, 80),
-          height: Math.max(edit.rect.height, 20),
-          font: "inherit",
-        }}
-      />
-    </div>
-  );
-}

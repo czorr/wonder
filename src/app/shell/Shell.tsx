@@ -5,6 +5,7 @@ import { RightPanel } from "@/app/shell/RightPanel";
 import { CanvasArea } from "@/app/shell/CanvasArea";
 import { CodePanel } from "@/app/shell/CodePanel";
 import { StatusBar } from "@/app/shell/StatusBar";
+import { PreviewOverlay } from "@/app/shell/PreviewOverlay";
 
 export function Shell() {
   return (
@@ -20,6 +21,7 @@ export function Shell() {
         <RightPanel />
       </div>
       <StatusBar />
+      <PreviewOverlay />
     </div>
   );
 }

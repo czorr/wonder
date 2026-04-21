@@ -173,6 +173,16 @@
         } else if (msg.type === "sandbox:setSelection") {
           selectedPath = msg.path;
           requestAnimationFrame(() => emitRect(selectedPath));
+        } else if (msg.type === "sandbox:setViewport") {
+          if (msg.width != null) {
+            document.body.style.width = msg.width + "px";
+            document.getElementById("root").style.display = "block";
+            document.getElementById("root").style.width = "100%";
+          } else {
+            document.body.style.width = "";
+            document.getElementById("root").style.display = "inline-block";
+            document.getElementById("root").style.width = "";
+          }
         }
       });
 
@@ -200,28 +210,88 @@
         true,
       );
 
+      let editingEl = null;
+      let editingOriginalText = "";
+
+      function commitEdit() {
+        if (!editingEl) return;
+        const el = editingEl;
+        editingEl = null;
+        el.contentEditable = "false";
+        el.style.outline = "";
+        el.style.cursor = "";
+        const newText = el.textContent || "";
+        if (newText !== editingOriginalText) {
+          parent.postMessage(
+            {
+              type: "sandbox:textCommit",
+              path: el.getAttribute("data-wonder-path"),
+              text: newText,
+            },
+            "*",
+          );
+        }
+      }
+
+      function cancelEdit() {
+        if (!editingEl) return;
+        const el = editingEl;
+        editingEl = null;
+        el.contentEditable = "false";
+        el.style.outline = "";
+        el.style.cursor = "";
+        el.textContent = editingOriginalText;
+      }
+
       document.addEventListener(
         "dblclick",
         (e) => {
           const target = e.target;
           if (!(target instanceof Element)) return;
           const el = target.closest("[data-wonder-path]");
-          if (!el) return;
+          if (!el || !(el instanceof HTMLElement)) return;
           if (!hasOnlyTextChildren(el)) return;
           e.preventDefault();
           e.stopPropagation();
+          if (editingEl) commitEdit();
+          editingEl = el;
+          editingOriginalText = el.textContent || "";
+          el.contentEditable = "true";
+          el.style.outline = "2px solid #10b981";
+          el.style.outlineOffset = "2px";
+          el.style.borderRadius = "3px";
+          el.style.cursor = "text";
+          el.focus();
+          // Select all text
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
           parent.postMessage(
             {
               type: "sandbox:textEdit",
               path: el.getAttribute("data-wonder-path"),
               rect: el.getBoundingClientRect().toJSON(),
-              text: el.textContent || "",
+              text: editingOriginalText,
             },
             "*",
           );
         },
         true,
       );
+
+      document.addEventListener("keydown", (e) => {
+        if (!editingEl) return;
+        if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); commitEdit(); }
+      }, true);
+
+      document.addEventListener("click", (e) => {
+        if (!editingEl) return;
+        if (e.target instanceof Element && editingEl.contains(e.target)) return;
+        commitEdit();
+      }, true);
 
       document.addEventListener("mouseover", (e) => {
         const target = e.target;
