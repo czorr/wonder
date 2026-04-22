@@ -2,7 +2,7 @@
 
 Checklist vivo del MVP vs. lo que realmente está implementado. Palomeado = hecho y probado. 🟡 = parcial. ❌ = falta.
 
-Última actualización: 2026-04-21
+Última actualización: 2026-04-22
 
 ---
 
@@ -55,8 +55,9 @@ Checklist vivo del MVP vs. lo que realmente está implementado. Palomeado = hech
 
 ## 6. Undo / redo / snapshots
 
-- [ ] Botones undo/redo renderizados pero sin handler — `Topbar.tsx:85-86`
-- [ ] Store `history.ts` no existe
+- [x] Undo / Redo funcionales con pilas `past[]`/`future[]` en `src/store/project.ts` (MAX 100, coalescing 500ms para typing continuo)
+- [x] Botones Topbar wired + disabled states reactivos — `Topbar.tsx`
+- [x] Atajos ⌘Z / ⌘⇧Z / ⌘Y — capturados en fase capture antes de que Monaco los consuma; el buffer del editor se re-sincroniza vía el `useEffect` de `CodePanel` cuando `active.source` cambia
 - [ ] Snapshots — "50 snapshots" hardcoded, sin storage ni timeline — `StatusBar.tsx:23`
 
 ## 7. Persistencia
@@ -85,6 +86,12 @@ Checklist vivo del MVP vs. lo que realmente está implementado. Palomeado = hech
 
 ## Cambios recientes
 
+**2026-04-22 — Undo/Redo + Prettify en editor:**
+
+- `src/store/project.ts` — pilas `past[]` / `future[]` con snapshots del doc (components, order, propValues). Cada mutación de contenido hace `pushHistory(kind)` con coalescing (setSource rápido colapsa en 1 entry). MAX_HISTORY=100.
+- `src/app/shell/Topbar.tsx` — botones Undo/Redo con estados reactivos (subscribe a `past.length` / `future.length`), atajos ⌘Z / ⌘⇧Z (suprimidos cuando el foco está en Monaco, para no chocar con su undo interno de buffer).
+- `src/app/shell/CodePanel.tsx` — botón Prettify usa `prettier/standalone` + `estree` + `babel` + `typescript` plugins (parser TS, maneja JSX). Reverti highlight custom de Monaco al tema minimalista de 4 reglas.
+
 **2026-04-21 — Figma-like nesting (fase 1 + fase 2):**
 
 Fase 1:
@@ -104,9 +111,9 @@ Fase 2 (arreglos + ghost preview):
 ## Siguiente
 
 Pendiente por prioridad:
-1. Drag de elemento existente dentro del sandbox para reordenar (reparent)
-2. Drag de un componente entero del canvas DENTRO de otro (nesting de componentes)
-3. Undo/redo con historial real
-4. Persistencia SQLite
-5. AI chat para generación de componentes
-6. Breakpoints/estados wirings reales (prefijos `sm:`/`hover:` en mutaciones)
+1. Persistencia SQLite (al cerrar la app se pierde todo)
+2. AI chat para generación de componentes
+3. Drag de elemento existente dentro del sandbox para reordenar (reparent)
+4. Drag de un componente entero del canvas DENTRO de otro (nesting de componentes)
+5. Breakpoints/estados wirings reales (prefijos `sm:`/`hover:` en mutaciones)
+6. Snapshots / timeline real en StatusBar

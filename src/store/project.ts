@@ -14,6 +14,33 @@ export type WonderComponent = {
   height: number;
 };
 
+// A "document snapshot" is the subset of state that undo/redo reverts.
+// Selection, open tabs, and active tab are UI state — we don't time-travel
+// them because it's confusing (you'd lose your current focus for a typo fix).
+type DocSnapshot = {
+  components: Record<ComponentId, WonderComponent>;
+  order: ComponentId[];
+  propValues: Record<ComponentId, Record<string, string>>;
+};
+
+// Kinds of mutations we push into history. Used for coalescing — a burst of
+// setSource events from typing should collapse into one history entry.
+type HistoryKind =
+  | "setSource"
+  | "moveFrame"
+  | "resizeFrame"
+  | "addComponent"
+  | "deleteComponent"
+  | "setPropValue"
+  | "clearPropValue";
+
+type HistoryEntry = { snapshot: DocSnapshot; kind: HistoryKind; at: number };
+
+const MAX_HISTORY = 100;
+// Coalesce successive same-kind commits within this window into a single
+// history entry. Tuned to feel natural when typing continuously in Monaco.
+const COALESCE_MS = 500;
+
 type State = {
   components: Record<ComponentId, WonderComponent>;
   order: ComponentId[];
@@ -22,6 +49,10 @@ type State = {
   openTabs: ComponentId[];
   activeTab: ComponentId | null;
   propValues: Record<ComponentId, Record<string, string>>;
+
+  // History
+  past: HistoryEntry[];
+  future: HistoryEntry[];
 
   selectComponent: (id: ComponentId | null) => void;
   selectElement: (path: string | null) => void;
@@ -35,6 +66,11 @@ type State = {
   clearPropValue: (id: ComponentId, name: string) => void;
   addComponent: (c: Omit<WonderComponent, "id"> & { id?: ComponentId }) => ComponentId;
   deleteComponent: (id: ComponentId) => void;
+
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
 };
 
 function slugify(s: string): string {
@@ -55,6 +91,14 @@ function uniqueName(base: string, components: Record<string, WonderComponent>): 
   let i = 2;
   while (names.has(`${base}${i}`)) i++;
   return `${base}${i}`;
+}
+
+function snapshotOf(s: State): DocSnapshot {
+  return {
+    components: s.components,
+    order: s.order,
+    propValues: s.propValues,
+  };
 }
 
 const STAT_TILE = `import { TrendingUp, DollarSign } from "lucide-react";
@@ -186,135 +230,246 @@ const seed: WonderComponent[] = [
 const components = Object.fromEntries(seed.map((c) => [c.id, c]));
 const order = seed.map((c) => c.id);
 
-export const useProject = create<State>((set) => ({
-  components,
-  order,
-  selectedComponentId: "stat-tile",
-  selectedElementPath: "0",
-  openTabs: ["stat-tile"],
-  activeTab: "stat-tile",
-  propValues: {},
+export const useProject = create<State>((set, get) => {
+  // Push the CURRENT state onto the past stack before a mutation is applied.
+  // Coalesces successive same-kind commits within COALESCE_MS (e.g. typing).
+  // Clears the redo stack because a new branch of history began.
+  const pushHistory = (kind: HistoryKind) => {
+    const s = get();
+    const now = Date.now();
+    const top = s.past[s.past.length - 1];
+    const shouldCoalesce =
+      top && top.kind === kind && now - top.at < COALESCE_MS;
+    let past = s.past;
+    if (!shouldCoalesce) {
+      past = [...past, { snapshot: snapshotOf(s), kind, at: now }];
+      if (past.length > MAX_HISTORY) past = past.slice(past.length - MAX_HISTORY);
+    } else {
+      // Bump the timestamp so the coalesce window slides with continued typing,
+      // but keep the original snapshot so undo rolls back the whole burst.
+      past = past.slice(0, -1).concat([{ ...top, at: now }]);
+    }
+    set({ past, future: [] });
+  };
 
-  selectComponent(id) {
-    set((s) => ({
-      selectedComponentId: id,
-      selectedElementPath: id ? "0" : null,
-      openTabs: id
-        ? s.openTabs.includes(id)
-          ? s.openTabs
-          : [...s.openTabs, id]
-        : s.openTabs,
-      activeTab: id ?? s.activeTab,
-    }));
-  },
-  selectElement(path) {
-    set({ selectedElementPath: path });
-  },
-  setSource(id, source) {
-    set((s) => ({
-      components: {
-        ...s.components,
-        [id]: { ...s.components[id], source },
-      },
-    }));
-  },
-  moveFrame(id, x, y) {
-    set((s) => ({
-      components: {
-        ...s.components,
-        [id]: { ...s.components[id], x, y },
-      },
-    }));
-  },
-  resizeFrame(id, x, y, w, h) {
-    set((s) => ({
-      components: {
-        ...s.components,
-        [id]: { ...s.components[id], x, y, width: w, height: h },
-      },
-    }));
-  },
-  openTab(id) {
-    set((s) => ({
-      openTabs: s.openTabs.includes(id) ? s.openTabs : [...s.openTabs, id],
-      activeTab: id,
-    }));
-  },
-  closeTab(id) {
-    set((s) => {
-      const tabs = s.openTabs.filter((t) => t !== id);
-      return {
-        openTabs: tabs,
-        activeTab: s.activeTab === id ? (tabs[tabs.length - 1] ?? null) : s.activeTab,
-      };
-    });
-  },
-  setActiveTab(id) {
-    set({ activeTab: id, selectedComponentId: id, selectedElementPath: "0" });
-  },
-  setPropValue(id, name, value) {
-    set((s) => ({
-      propValues: {
-        ...s.propValues,
-        [id]: { ...(s.propValues[id] ?? {}), [name]: value },
-      },
-    }));
-  },
-  clearPropValue(id, name) {
-    set((s) => {
-      const cur = { ...(s.propValues[id] ?? {}) };
-      delete cur[name];
-      return { propValues: { ...s.propValues, [id]: cur } };
-    });
-  },
-  addComponent(partial) {
-    let createdId: ComponentId = partial.id ?? "";
-    set((s) => {
-      const name = uniqueName(partial.name, s.components);
-      const id = partial.id && !(partial.id in s.components)
-        ? partial.id
-        : uniqueId(name, s.components);
-      createdId = id;
-      const comp: WonderComponent = {
-        id,
-        name,
-        filename: partial.filename || `${name}.tsx`,
-        folder: partial.folder || "components",
-        source: partial.source,
-        x: partial.x,
-        y: partial.y,
-        width: partial.width,
-        height: partial.height,
-      };
-      return {
-        components: { ...s.components, [id]: comp },
-        order: [...s.order, id],
+  return {
+    components,
+    order,
+    selectedComponentId: "stat-tile",
+    selectedElementPath: "0",
+    openTabs: ["stat-tile"],
+    activeTab: "stat-tile",
+    propValues: {},
+    past: [],
+    future: [],
+
+    selectComponent(id) {
+      set((s) => ({
         selectedComponentId: id,
-        selectedElementPath: "0",
+        selectedElementPath: id ? "0" : null,
+        openTabs: id
+          ? s.openTabs.includes(id)
+            ? s.openTabs
+            : [...s.openTabs, id]
+          : s.openTabs,
+        activeTab: id ?? s.activeTab,
+      }));
+    },
+    selectElement(path) {
+      set({ selectedElementPath: path });
+    },
+    setSource(id, source) {
+      if (get().components[id]?.source === source) return;
+      pushHistory("setSource");
+      set((s) => ({
+        components: {
+          ...s.components,
+          [id]: { ...s.components[id], source },
+        },
+      }));
+    },
+    moveFrame(id, x, y) {
+      const c = get().components[id];
+      if (!c || (c.x === x && c.y === y)) return;
+      pushHistory("moveFrame");
+      set((s) => ({
+        components: {
+          ...s.components,
+          [id]: { ...s.components[id], x, y },
+        },
+      }));
+    },
+    resizeFrame(id, x, y, w, h) {
+      const c = get().components[id];
+      if (!c || (c.x === x && c.y === y && c.width === w && c.height === h)) return;
+      pushHistory("resizeFrame");
+      set((s) => ({
+        components: {
+          ...s.components,
+          [id]: { ...s.components[id], x, y, width: w, height: h },
+        },
+      }));
+    },
+    openTab(id) {
+      set((s) => ({
         openTabs: s.openTabs.includes(id) ? s.openTabs : [...s.openTabs, id],
         activeTab: id,
+      }));
+    },
+    closeTab(id) {
+      set((s) => {
+        const tabs = s.openTabs.filter((t) => t !== id);
+        return {
+          openTabs: tabs,
+          activeTab: s.activeTab === id ? (tabs[tabs.length - 1] ?? null) : s.activeTab,
+        };
+      });
+    },
+    setActiveTab(id) {
+      set({ activeTab: id, selectedComponentId: id, selectedElementPath: "0" });
+    },
+    setPropValue(id, name, value) {
+      if (get().propValues[id]?.[name] === value) return;
+      pushHistory("setPropValue");
+      set((s) => ({
+        propValues: {
+          ...s.propValues,
+          [id]: { ...(s.propValues[id] ?? {}), [name]: value },
+        },
+      }));
+    },
+    clearPropValue(id, name) {
+      if (get().propValues[id]?.[name] === undefined) return;
+      pushHistory("clearPropValue");
+      set((s) => {
+        const cur = { ...(s.propValues[id] ?? {}) };
+        delete cur[name];
+        return { propValues: { ...s.propValues, [id]: cur } };
+      });
+    },
+    addComponent(partial) {
+      pushHistory("addComponent");
+      let createdId: ComponentId = partial.id ?? "";
+      set((s) => {
+        const name = uniqueName(partial.name, s.components);
+        const id = partial.id && !(partial.id in s.components)
+          ? partial.id
+          : uniqueId(name, s.components);
+        createdId = id;
+        const comp: WonderComponent = {
+          id,
+          name,
+          filename: partial.filename || `${name}.tsx`,
+          folder: partial.folder || "components",
+          source: partial.source,
+          x: partial.x,
+          y: partial.y,
+          width: partial.width,
+          height: partial.height,
+        };
+        return {
+          components: { ...s.components, [id]: comp },
+          order: [...s.order, id],
+          selectedComponentId: id,
+          selectedElementPath: "0",
+          openTabs: s.openTabs.includes(id) ? s.openTabs : [...s.openTabs, id],
+          activeTab: id,
+        };
+      });
+      return createdId;
+    },
+    deleteComponent(id) {
+      if (!(id in get().components)) return;
+      pushHistory("deleteComponent");
+      set((s) => {
+        const { [id]: _removed, ...rest } = s.components;
+        const order = s.order.filter((x) => x !== id);
+        const openTabs = s.openTabs.filter((x) => x !== id);
+        const { [id]: _pv, ...propValues } = s.propValues;
+        const selectedComponentId = s.selectedComponentId === id ? null : s.selectedComponentId;
+        const activeTab = s.activeTab === id ? (openTabs[openTabs.length - 1] ?? null) : s.activeTab;
+        return {
+          components: rest,
+          order,
+          openTabs,
+          propValues,
+          selectedComponentId,
+          selectedElementPath: selectedComponentId ? s.selectedElementPath : null,
+          activeTab,
+        };
+      });
+    },
+
+    undo() {
+      const s = get();
+      if (s.past.length === 0) return;
+      const top = s.past[s.past.length - 1];
+      const current: HistoryEntry = {
+        snapshot: snapshotOf(s),
+        kind: top.kind,
+        at: Date.now(),
       };
-    });
-    return createdId;
-  },
-  deleteComponent(id) {
-    set((s) => {
-      if (!(id in s.components)) return s;
-      const { [id]: _removed, ...rest } = s.components;
-      const order = s.order.filter((x) => x !== id);
-      const openTabs = s.openTabs.filter((x) => x !== id);
-      const { [id]: _pv, ...propValues } = s.propValues;
-      const selectedComponentId = s.selectedComponentId === id ? null : s.selectedComponentId;
-      const activeTab = s.activeTab === id ? (openTabs[openTabs.length - 1] ?? null) : s.activeTab;
-      return {
-        components: rest,
+      const { components, order, propValues } = top.snapshot;
+      // If the currently selected component is being removed by the undo, drop selection.
+      const selectedComponentId =
+        s.selectedComponentId && components[s.selectedComponentId]
+          ? s.selectedComponentId
+          : null;
+      const openTabs = s.openTabs.filter((id) => components[id]);
+      const activeTab =
+        s.activeTab && components[s.activeTab]
+          ? s.activeTab
+          : (openTabs[openTabs.length - 1] ?? null);
+      set({
+        components,
         order,
-        openTabs,
         propValues,
         selectedComponentId,
         selectedElementPath: selectedComponentId ? s.selectedElementPath : null,
+        openTabs,
         activeTab,
+        past: s.past.slice(0, -1),
+        future: [...s.future, current],
+      });
+    },
+
+    redo() {
+      const s = get();
+      if (s.future.length === 0) return;
+      const top = s.future[s.future.length - 1];
+      const current: HistoryEntry = {
+        snapshot: snapshotOf(s),
+        kind: top.kind,
+        at: Date.now(),
       };
-    });
-  },
-}));
+      const { components, order, propValues } = top.snapshot;
+      const selectedComponentId =
+        s.selectedComponentId && components[s.selectedComponentId]
+          ? s.selectedComponentId
+          : null;
+      const openTabs = s.openTabs.filter((id) => components[id]);
+      const activeTab =
+        s.activeTab && components[s.activeTab]
+          ? s.activeTab
+          : (openTabs[openTabs.length - 1] ?? null);
+      set({
+        components,
+        order,
+        propValues,
+        selectedComponentId,
+        selectedElementPath: selectedComponentId ? s.selectedElementPath : null,
+        openTabs,
+        activeTab,
+        past: [...s.past, current],
+        future: s.future.slice(0, -1),
+      });
+    },
+
+    canUndo() {
+      return get().past.length > 0;
+    },
+    canRedo() {
+      return get().future.length > 0;
+    },
+  };
+});

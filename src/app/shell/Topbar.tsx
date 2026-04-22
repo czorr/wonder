@@ -35,6 +35,12 @@ export function Topbar() {
   const selectedId = useProject((s) => s.selectedComponentId);
   const activeTab = useProject((s) => s.activeTab);
   const setSource = useProject((s) => s.setSource);
+  const undo = useProject((s) => s.undo);
+  const redo = useProject((s) => s.redo);
+  // Subscribe to stack lengths so the buttons re-render when enable state flips.
+  // (We intentionally don't use canUndo/canRedo getters — those wouldn't trigger re-renders.)
+  const pastLen = useProject((s) => s.past.length);
+  const futureLen = useProject((s) => s.future.length);
 
   const resetSizes = () => {
     for (const id of order) {
@@ -51,18 +57,39 @@ export function Topbar() {
     }
   };
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts.
+  //
+  // Undo/redo are registered in the *capture* phase so they fire BEFORE Monaco's
+  // own Cmd+Z/Cmd+Shift+Z handlers — otherwise Monaco would swallow the event
+  // whenever the editor has focus and the canvas-level history would feel broken.
+  // Monaco's model re-syncs from `active.source` via the useEffect in CodePanel,
+  // so restoring state here makes the editor buffer follow along automatically.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
-      if (e.key === "=" || e.key === "+") { e.preventDefault(); zoomIn(); }
-      if (e.key === "-") { e.preventDefault(); zoomOut(); }
-      if (e.key === "0") { e.preventDefault(); zoomReset(); }
-      if (e.key === "p") { e.preventDefault(); openPreview(); }
+      const key = e.key.toLowerCase();
+      if (key === "z") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.shiftKey) redo();
+        else undo();
+        return;
+      }
+      // ⌘Y = redo on Windows/Linux muscle memory; harmless on macOS too.
+      if (key === "y") {
+        e.preventDefault();
+        e.stopPropagation();
+        redo();
+        return;
+      }
+      if (key === "=" || key === "+") { e.preventDefault(); zoomIn(); return; }
+      if (key === "-") { e.preventDefault(); zoomOut(); return; }
+      if (key === "0") { e.preventDefault(); zoomReset(); return; }
+      if (key === "p") { e.preventDefault(); openPreview(); return; }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [zoomIn, zoomOut, zoomReset, openPreview]);
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () => window.removeEventListener("keydown", onKey, { capture: true });
+  }, [zoomIn, zoomOut, zoomReset, openPreview, undo, redo]);
 
   const handleExport = () => {
     const id = activeTab ?? selectedId;
@@ -82,8 +109,20 @@ export function Topbar() {
       {/* Left: history + tools */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-0.5">
-          <IconBtn><Undo2 size={15} strokeWidth={1.75} /></IconBtn>
-          <IconBtn><Redo2 size={15} strokeWidth={1.75} /></IconBtn>
+          <IconBtn
+            onClick={undo}
+            disabled={pastLen === 0}
+            title="Undo (⌘Z)"
+          >
+            <Undo2 size={15} strokeWidth={1.75} />
+          </IconBtn>
+          <IconBtn
+            onClick={redo}
+            disabled={futureLen === 0}
+            title="Redo (⌘⇧Z)"
+          >
+            <Redo2 size={15} strokeWidth={1.75} />
+          </IconBtn>
         </div>
         <div className="h-5 w-px bg-stroke" />
         <div className="flex items-center gap-0.5">
@@ -184,21 +223,26 @@ function IconBtn({
   active,
   onClick,
   title,
+  disabled,
 }: {
   children: React.ReactNode;
   active?: boolean;
   onClick?: () => void;
   title?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       title={title}
+      disabled={disabled}
       className={
         "grid size-7 place-items-center rounded-md transition " +
-        (active
-          ? "bg-panel-soft text-ink"
-          : "text-ink-muted hover:bg-panel-soft hover:text-ink")
+        (disabled
+          ? "text-ink-faint opacity-40 cursor-not-allowed"
+          : active
+            ? "bg-panel-soft text-ink"
+            : "text-ink-muted hover:bg-panel-soft hover:text-ink")
       }
     >
       {children}
