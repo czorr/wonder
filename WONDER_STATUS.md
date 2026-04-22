@@ -62,8 +62,22 @@ Checklist vivo del MVP vs. lo que realmente está implementado. Palomeado = hech
 
 ## 7. Persistencia
 
-- [ ] SQLite vía Tauri SQL plugin — `src/db/` vacío, `src-tauri/src/lib.rs` solo builder base
-- [ ] Al cerrar la app se pierde todo
+Proyecto = **carpeta en disco** con `wonder.json` + `components/<folder>/<Name>.tsx`. Los sources viven en los `.tsx` reales (legibles fuera de Wonder, diff-friendly en Git, AI-friendly). `wonder.json` guarda sólo meta (ids, posiciones, selección, canvas).
+
+- [x] Plugins Tauri `fs` + `dialog` wireados (`src-tauri/Cargo.toml`, `lib.rs`, `capabilities/default.json`)
+- [x] Serialización + esquema versionado (v1) con `migrateProjectFile` — `src/persistence/types.ts`, `migrate.ts`, `projectFile.ts`
+- [x] Atomic write (`path.tmp` → `rename`) + `pruneOrphans` para cleanup de `.tsx` huérfanos — `fs.ts`
+- [x] Store `projectMeta` { path, name, dirty, lastSavedAt, loading } + acciones `newProject` / `replaceProject` / `markClean` / `setProjectPath` / `setLoading` — `src/store/project.ts`
+- [x] Flag `dirty` se enciende desde `pushHistory`, se apaga en `markClean` tras save/load
+- [x] Actions con dialogs nativos: New, Open, Save, Save As con confirmación "descartar cambios?" — `src/persistence/actions.ts`
+- [x] TitleStrip con menú dropdown (File menu) + recientes + atajos ⌘N / ⌘O / ⌘S / ⌘⇧S (capture phase para ganarle a Monaco)
+- [x] Bootstrap en launch: si hay `lastOpenedPath` válido, lo abre; si falla silently fall-back al seed — `Shell.tsx`
+- [x] `beforeunload` guard cuando hay `dirty`
+- [x] App state en `$APPDATA/app.json` (máximo 10 recientes; se autolimpia si un path ya no existe) — `src/persistence/appState.ts`
+- [ ] **Fase 2**: Autosave debounced (1.5s) a `path.autosave`, con atomic rename en el save explícito
+- [ ] **Fase 2**: Recovery prompt al abrir si existe `.autosave` más nuevo que `wonder.json`
+- [ ] **Fase 2**: Autosave para proyectos untitled en `$APPDATA/untitled.autosave.wonder`
+- [ ] SQLite dropped — plugin removido (`@tauri-apps/plugin-sql`)
 
 ## 8. Settings
 
@@ -85,6 +99,18 @@ Checklist vivo del MVP vs. lo que realmente está implementado. Palomeado = hech
 ---
 
 ## Cambios recientes
+
+**2026-04-22 — Persistencia local (folder-based):**
+
+- Plugins Tauri `fs` + `dialog` instalados y wireados; `plugin-sql` JS removido
+- Nuevo módulo `src/persistence/` — types + serialize + fs atomic + actions + appState + index
+- Esquema `wonder.json` v1 con `migrateProjectFile`; sources viven en archivos `.tsx` reales bajo `components/`
+- Store: `projectMeta` slice + `newProject` / `replaceProject` / `markClean` / `setProjectPath` / `setLoading`; `pushHistory` marca `dirty`
+- TitleStrip: botón con nombre del proyecto abre File menu (New / Open / Recentes / Save / Save As / Export .tsx); indicador de dirty como dot; muestra filename del tab activo
+- Atajos ⌘N / ⌘O / ⌘S / ⌘⇧S en fase capture
+- Bootstrap: `loadAppState()` en `Shell.tsx` → si hay `lastOpenedPath`, `loadProjectFromPath()` automáticamente
+- `beforeunload` warning si hay cambios sin guardar
+- Recentes persistidos en `$APPDATA/app.json` con auto-cleanup cuando un path deja de existir
 
 **2026-04-22 — Undo/Redo + Prettify en editor:**
 
@@ -111,8 +137,8 @@ Fase 2 (arreglos + ghost preview):
 ## Siguiente
 
 Pendiente por prioridad:
-1. Persistencia SQLite (al cerrar la app se pierde todo)
-2. AI chat para generación de componentes
+1. **Persistencia fase 2** — Autosave debounced + recovery de crash (`.autosave` shadow + rename atómico; recovery prompt al abrir)
+2. AI chat para generación de componentes (tool interface = `addComponent` / `setSource` / `deleteComponent` del store; persistencia queda cubierta por save del usuario)
 3. Drag de elemento existente dentro del sandbox para reordenar (reparent)
 4. Drag de un componente entero del canvas DENTRO de otro (nesting de componentes)
 5. Breakpoints/estados wirings reales (prefijos `sm:`/`hover:` en mutaciones)

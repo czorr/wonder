@@ -18,6 +18,12 @@ import { useEffect } from "react";
 import { useCanvas } from "@/store/canvas";
 import { useProject } from "@/store/project";
 import { removeClassesAtPath } from "@/ast/tailwind";
+import {
+  actionNewProject,
+  actionOpenProject,
+  actionSave,
+  actionSaveAs,
+} from "@/persistence";
 
 const BREAKPOINTS = ["base", "sm", "md", "lg", "xl", "2xl"] as const;
 
@@ -86,6 +92,27 @@ export function Topbar() {
       if (key === "-") { e.preventDefault(); zoomOut(); return; }
       if (key === "0") { e.preventDefault(); zoomReset(); return; }
       if (key === "p") { e.preventDefault(); openPreview(); return; }
+      // Project lifecycle. Capture-phase wins against Monaco's Cmd+S / Cmd+O
+      // (Monaco binds Save via its command palette, which we don't use here).
+      if (key === "n") {
+        e.preventDefault();
+        e.stopPropagation();
+        void actionNewProject();
+        return;
+      }
+      if (key === "o") {
+        e.preventDefault();
+        e.stopPropagation();
+        void actionOpenProject();
+        return;
+      }
+      if (key === "s") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.shiftKey) void actionSaveAs();
+        else void actionSave();
+        return;
+      }
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true });

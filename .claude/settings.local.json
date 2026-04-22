@@ -5,7 +5,8 @@
       "Bash(sh -s -- -y --default-toolchain stable)",
       "Bash(npx tsc *)",
       "Bash(pnpm add *)",
-      "Bash(pnpm tsc *)"
+      "Bash(pnpm tsc *)",
+      "Bash(pnpm remove *)"
     ]
   }
 }

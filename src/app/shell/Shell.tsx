@@ -10,6 +10,7 @@ import { PreviewOverlay } from "@/app/shell/PreviewOverlay";
 import { useProject } from "@/store/project";
 import { useCanvas } from "@/store/canvas";
 import { normalizePastedComponent } from "@/ast/paste";
+import { loadAppState, loadProjectFromPath } from "@/persistence";
 
 function isEditableTarget(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
@@ -44,6 +45,36 @@ export function Shell() {
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
+  }, []);
+
+  // On launch, if the app previously had a project open, try to restore it.
+  // A failure (folder moved/deleted) silently falls back to the seed project
+  // that the store already boots with, so the UI is never stuck on a spinner.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const state = await loadAppState();
+      if (cancelled || !state.lastOpenedPath) return;
+      await loadProjectFromPath(state.lastOpenedPath);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Browser-side guard: warn the user when trying to close the tab/window with
+  // unsaved changes. Tauri also emits a close-requested event, but wiring that
+  // requires a Rust command round-trip; the beforeunload hook is good enough
+  // for the dev server + handles the "accidental window close" muscle memory.
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (useProject.getState().projectMeta.dirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
 
   return (

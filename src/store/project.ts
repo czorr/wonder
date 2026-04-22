@@ -41,6 +41,25 @@ const MAX_HISTORY = 100;
 // history entry. Tuned to feel natural when typing continuously in Monaco.
 const COALESCE_MS = 500;
 
+// Project-level metadata: where the project lives on disk, its name, and
+// whether there are unsaved changes. Separate from the "document" state
+// (components etc.) so save/load flows don't accidentally touch the
+// undo history.
+export type ProjectMeta = {
+  /** Absolute folder path. null = untitled (never saved). */
+  path: string | null;
+  /** Display name; reflected in the title bar. */
+  name: string;
+  /** ISO string captured when the project was first created. */
+  createdAt: string;
+  /** True when there are mutations since the last save or load. */
+  dirty: boolean;
+  /** Timestamp (ms) of the last successful save. */
+  lastSavedAt: number | null;
+  /** True while an async open is in flight — blocks duplicate opens. */
+  loading: boolean;
+};
+
 type State = {
   components: Record<ComponentId, WonderComponent>;
   order: ComponentId[];
@@ -53,6 +72,9 @@ type State = {
   // History
   past: HistoryEntry[];
   future: HistoryEntry[];
+
+  // Project meta
+  projectMeta: ProjectMeta;
 
   selectComponent: (id: ComponentId | null) => void;
   selectElement: (path: string | null) => void;
@@ -71,6 +93,33 @@ type State = {
   redo: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
+
+  // --- Project lifecycle ---
+  /** Reset to an empty untitled project. Clears history. */
+  newProject: (opts?: { name?: string }) => void;
+  /** Replace the document with a loaded project from disk. Clears history. */
+  replaceProject: (payload: ReplaceProjectPayload) => void;
+  /** Called after a successful write — flips dirty off and bumps lastSavedAt. */
+  markClean: (opts?: { path?: string; name?: string }) => void;
+  /** Update project path/name without touching document state (e.g. Save As). */
+  setProjectPath: (path: string, name?: string) => void;
+  /** Toggles the async loading flag; UI uses this to disable mutations. */
+  setLoading: (loading: boolean) => void;
+};
+
+export type ReplaceProjectPayload = {
+  path: string | null;
+  name: string;
+  createdAt: string;
+  components: Record<ComponentId, WonderComponent>;
+  order: ComponentId[];
+  propValues: Record<ComponentId, Record<string, string>>;
+  selection?: {
+    componentId: ComponentId | null;
+    elementPath: string | null;
+    openTabs: ComponentId[];
+    activeTab: ComponentId | null;
+  };
 };
 
 function slugify(s: string): string {
@@ -230,10 +279,48 @@ const seed: WonderComponent[] = [
 const components = Object.fromEntries(seed.map((c) => [c.id, c]));
 const order = seed.map((c) => c.id);
 
+/**
+ * Initial state for a brand-new untitled project (no components).
+ * Used by `newProject()`.
+ */
+export function emptyProjectState(name = "Untitled"): {
+  components: Record<ComponentId, WonderComponent>;
+  order: ComponentId[];
+  propValues: Record<ComponentId, Record<string, string>>;
+  meta: ProjectMeta;
+  selection: {
+    selectedComponentId: ComponentId | null;
+    selectedElementPath: string | null;
+    openTabs: ComponentId[];
+    activeTab: ComponentId | null;
+  };
+} {
+  return {
+    components: {},
+    order: [],
+    propValues: {},
+    meta: {
+      path: null,
+      name,
+      createdAt: new Date().toISOString(),
+      dirty: false,
+      lastSavedAt: null,
+      loading: false,
+    },
+    selection: {
+      selectedComponentId: null,
+      selectedElementPath: null,
+      openTabs: [],
+      activeTab: null,
+    },
+  };
+}
+
 export const useProject = create<State>((set, get) => {
   // Push the CURRENT state onto the past stack before a mutation is applied.
   // Coalesces successive same-kind commits within COALESCE_MS (e.g. typing).
   // Clears the redo stack because a new branch of history began.
+  // Also flips `dirty` on, because any content mutation means unsaved changes.
   const pushHistory = (kind: HistoryKind) => {
     const s = get();
     const now = Date.now();
@@ -249,7 +336,10 @@ export const useProject = create<State>((set, get) => {
       // but keep the original snapshot so undo rolls back the whole burst.
       past = past.slice(0, -1).concat([{ ...top, at: now }]);
     }
-    set({ past, future: [] });
+    const meta = s.projectMeta.dirty
+      ? s.projectMeta
+      : { ...s.projectMeta, dirty: true };
+    set({ past, future: [], projectMeta: meta });
   };
 
   return {
@@ -262,6 +352,15 @@ export const useProject = create<State>((set, get) => {
     propValues: {},
     past: [],
     future: [],
+    projectMeta: {
+      // The app boots with the seed project as an untitled draft.
+      path: null,
+      name: "Untitled",
+      createdAt: new Date().toISOString(),
+      dirty: false,
+      lastSavedAt: null,
+      loading: false,
+    },
 
     selectComponent(id) {
       set((s) => ({
@@ -470,6 +569,96 @@ export const useProject = create<State>((set, get) => {
     },
     canRedo() {
       return get().future.length > 0;
+    },
+
+    // ---------------------------------------------------------------------
+    // Project lifecycle
+    //
+    // These operations REPLACE the document wholesale and therefore clear
+    // undo history — time-travel across different projects would be
+    // surprising and history entries would reference dead ids.
+    // ---------------------------------------------------------------------
+
+    newProject(opts) {
+      const empty = emptyProjectState(opts?.name);
+      set({
+        components: empty.components,
+        order: empty.order,
+        propValues: empty.propValues,
+        selectedComponentId: empty.selection.selectedComponentId,
+        selectedElementPath: empty.selection.selectedElementPath,
+        openTabs: empty.selection.openTabs,
+        activeTab: empty.selection.activeTab,
+        past: [],
+        future: [],
+        projectMeta: empty.meta,
+      });
+    },
+
+    replaceProject(payload) {
+      // Prefer the caller-provided selection (restored from wonder.json), but
+      // fall back to selecting the first component so the user isn't staring
+      // at a blank inspector.
+      const firstId = payload.order[0] ?? null;
+      const fallbackSelection = {
+        selectedComponentId: firstId,
+        selectedElementPath: firstId ? "0" : null,
+        openTabs: firstId ? [firstId] : [],
+        activeTab: firstId,
+      };
+      const sel = payload.selection
+        ? {
+            selectedComponentId: payload.selection.componentId,
+            selectedElementPath: payload.selection.elementPath,
+            openTabs: payload.selection.openTabs,
+            activeTab: payload.selection.activeTab,
+          }
+        : fallbackSelection;
+      set({
+        components: payload.components,
+        order: payload.order,
+        propValues: payload.propValues,
+        selectedComponentId: sel.selectedComponentId,
+        selectedElementPath: sel.selectedElementPath,
+        openTabs: sel.openTabs,
+        activeTab: sel.activeTab,
+        past: [],
+        future: [],
+        projectMeta: {
+          path: payload.path,
+          name: payload.name,
+          createdAt: payload.createdAt,
+          dirty: false,
+          lastSavedAt: payload.path ? Date.now() : null,
+          loading: false,
+        },
+      });
+    },
+
+    markClean(opts) {
+      set((s) => ({
+        projectMeta: {
+          ...s.projectMeta,
+          path: opts?.path ?? s.projectMeta.path,
+          name: opts?.name ?? s.projectMeta.name,
+          dirty: false,
+          lastSavedAt: Date.now(),
+        },
+      }));
+    },
+
+    setProjectPath(path, name) {
+      set((s) => ({
+        projectMeta: {
+          ...s.projectMeta,
+          path,
+          name: name ?? s.projectMeta.name,
+        },
+      }));
+    },
+
+    setLoading(loading) {
+      set((s) => ({ projectMeta: { ...s.projectMeta, loading } }));
     },
   };
 });
