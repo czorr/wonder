@@ -36,9 +36,27 @@ export type SandboxIncoming =
     }
   | { type: "sandbox:textCommit"; path: string; text: string }
   | { type: "sandbox:size"; width: number; height: number }
-  | { type: "sandbox:dragOver"; path: string | null; rect: Rect | null }
+  | {
+      type: "sandbox:dragOver";
+      path: string | null;
+      rect: Rect | null;
+      /** Insertion index among the container's JSXElement children (undefined if dropping INTO an empty container). */
+      index?: number;
+      /** Thin rect where the insertion line should be drawn, relative to the iframe viewport. */
+      markerRect?: Rect | null;
+      /** Approximate rect where the dropped primitive will end up (ghost preview). */
+      ghostRect?: Rect | null;
+      /** "inside" = drop as first child of empty parent; "before"/"after" = between siblings. */
+      mode?: "inside" | "before" | "after";
+    }
   | { type: "sandbox:dragLeave" }
-  | { type: "sandbox:drop"; path: string | null; snippet: string; name?: string }
+  | {
+      type: "sandbox:drop";
+      path: string | null;
+      snippet: string;
+      name?: string;
+      index?: number;
+    }
   | { type: "sandbox:deleteKey" };
 
 export type SandboxOutgoing =

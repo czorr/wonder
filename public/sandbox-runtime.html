@@ -346,11 +346,219 @@
       });
 
       const DRAG_MIME = "application/x-wonder-primitive";
+      const LINE_THICKNESS = 3;
 
-      function findDropTarget(target) {
-        if (!(target instanceof Element)) return null;
-        return target.closest("[data-wonder-path]");
+      // Size of the primitive being dragged — set via "wonder:dragStart" from
+      // the parent window when the user starts dragging from the sidebar.
+      // Used to render a ghost preview matching what will actually be inserted.
+      let pendingDragSize = null;
+
+      window.addEventListener("message", (e) => {
+        const d = e.data;
+        if (!d || typeof d !== "object") return;
+        if (d.type === "wonder:dragStart") {
+          pendingDragSize = d.size || null;
+        } else if (d.type === "wonder:dragEnd") {
+          pendingDragSize = null;
+        }
+      });
+
+      function hasWonderElementChildren(el) {
+        for (let i = 0; i < el.children.length; i++) {
+          if (el.children[i].hasAttribute("data-wonder-path")) return true;
+        }
+        return false;
       }
+
+      /**
+       * Walk up from the hovered element to find the right DROP CONTAINER.
+       * Rules:
+       *   - If hovered has element-children with data-wonder-path → it's a container, use it.
+       *   - If hovered is a leaf (span/button/img/etc. or any element without such children),
+       *     climb to the nearest ancestor that DOES have such children.
+       *   - Fall back to the root if nothing else matches.
+       *
+       * This makes "drag primitive over the title text of a card" resolve the
+       * card as the container, not the text leaf.
+       */
+      function findDropContainer(target) {
+        if (!(target instanceof Element)) return null;
+        let el = target.closest("[data-wonder-path]");
+        while (el && !hasWonderElementChildren(el)) {
+          // Climb to the nearest wonder-path ancestor that has wonder-path children.
+          const parent = el.parentElement
+            ? el.parentElement.closest("[data-wonder-path]")
+            : null;
+          if (!parent) break;
+          el = parent;
+        }
+        return el;
+      }
+
+      function primaryAxisIsRow(container, kids) {
+        const cs = window.getComputedStyle(container);
+        if (cs.display.includes("flex")) return cs.flexDirection.startsWith("row");
+        if (cs.display === "grid") {
+          if (cs.gridAutoFlow.includes("column")) return true;
+          const cols = cs.gridTemplateColumns
+            .split(" ")
+            .filter(Boolean).length;
+          if (cols > 1 && kids.length > 1) return true;
+          return false;
+        }
+        // Block-ish → vertical stacking by default.
+        return false;
+      }
+
+      function rectToPlain(r) {
+        return {
+          x: r.x,
+          y: r.y,
+          left: r.left,
+          top: r.top,
+          right: r.right,
+          bottom: r.bottom,
+          width: r.width,
+          height: r.height,
+        };
+      }
+
+      /**
+       * Given a drop container and pointer position, decide:
+       *  - insertion index among element-children
+       *  - marker rect (insertion LINE between siblings)
+       *  - ghost rect (approx rect where the dropped primitive will end up)
+       *  - mode: "inside" (empty container) | "before" | "after"
+       */
+      function computeDropHint(container, clientX, clientY) {
+        const kids = Array.from(container.children).filter(
+          (n) => n instanceof Element && n.hasAttribute("data-wonder-path"),
+        );
+        const containerRect = container.getBoundingClientRect();
+        const cs = window.getComputedStyle(container);
+        const isRow = primaryAxisIsRow(container, kids);
+        const size = pendingDragSize || { w: 120, h: 40 };
+
+        if (kids.length === 0) {
+          const padT = parseFloat(cs.paddingTop) || 0;
+          const padL = parseFloat(cs.paddingLeft) || 0;
+          const padR = parseFloat(cs.paddingRight) || 0;
+          const padB = parseFloat(cs.paddingBottom) || 0;
+          const innerW = Math.max(0, containerRect.width - padL - padR);
+          const innerH = Math.max(0, containerRect.height - padT - padB);
+          const markerRect = rectToPlain({
+            x: containerRect.left + padL,
+            y: containerRect.top + padT,
+            left: containerRect.left + padL,
+            top: containerRect.top + padT,
+            right: containerRect.left + padL + innerW,
+            bottom: containerRect.top + padT + LINE_THICKNESS,
+            width: innerW,
+            height: LINE_THICKNESS,
+          });
+          // Ghost in the top-left of the container's inner box, clipped to available space.
+          const gw = Math.min(size.w, innerW);
+          const gh = Math.min(size.h, innerH);
+          const ghostRect = rectToPlain({
+            x: containerRect.left + padL,
+            y: containerRect.top + padT,
+            left: containerRect.left + padL,
+            top: containerRect.top + padT,
+            right: containerRect.left + padL + gw,
+            bottom: containerRect.top + padT + gh,
+            width: gw,
+            height: gh,
+          });
+          return { mode: "inside", index: 0, markerRect, ghostRect };
+        }
+
+        // Find nearest sibling on the primary axis.
+        let bestIdx = 0;
+        let bestDist = Infinity;
+        let bestSide = "before";
+        for (let i = 0; i < kids.length; i++) {
+          const r = kids[i].getBoundingClientRect();
+          const midPrimary = isRow ? (r.left + r.right) / 2 : (r.top + r.bottom) / 2;
+          const p = isRow ? clientX : clientY;
+          const d = Math.abs(p - midPrimary);
+          if (d < bestDist) {
+            bestDist = d;
+            bestIdx = i;
+            bestSide = p < midPrimary ? "before" : "after";
+          }
+        }
+        const nearRect = kids[bestIdx].getBoundingClientRect();
+        const insertIndex = bestSide === "before" ? bestIdx : bestIdx + 1;
+
+        // Marker LINE — thin, along the cross axis at the exact insertion edge.
+        let markerRect;
+        let ghostRect;
+        if (isRow) {
+          const xEdge = bestSide === "before" ? nearRect.left : nearRect.right;
+          const top = Math.max(containerRect.top, nearRect.top - 4);
+          const bottom = Math.min(containerRect.bottom, nearRect.bottom + 4);
+          markerRect = rectToPlain({
+            x: xEdge - LINE_THICKNESS / 2,
+            y: top,
+            left: xEdge - LINE_THICKNESS / 2,
+            top,
+            right: xEdge + LINE_THICKNESS / 2,
+            bottom,
+            width: LINE_THICKNESS,
+            height: bottom - top,
+          });
+          // Ghost: width = primitive width capped to container, height = sibling height.
+          const gw = Math.min(size.w, containerRect.width);
+          const gh = Math.max(nearRect.height, Math.min(size.h, containerRect.height));
+          const gy = nearRect.top + (nearRect.height - gh) / 2;
+          const gx = bestSide === "before" ? xEdge - gw / 2 : xEdge - gw / 2;
+          ghostRect = rectToPlain({
+            x: gx,
+            y: gy,
+            left: gx,
+            top: gy,
+            right: gx + gw,
+            bottom: gy + gh,
+            width: gw,
+            height: gh,
+          });
+        } else {
+          const yEdge = bestSide === "before" ? nearRect.top : nearRect.bottom;
+          const left = Math.max(containerRect.left, nearRect.left - 4);
+          const right = Math.min(containerRect.right, nearRect.right + 4);
+          markerRect = rectToPlain({
+            x: left,
+            y: yEdge - LINE_THICKNESS / 2,
+            left,
+            top: yEdge - LINE_THICKNESS / 2,
+            right,
+            bottom: yEdge + LINE_THICKNESS / 2,
+            width: right - left,
+            height: LINE_THICKNESS,
+          });
+          // Ghost: width = sibling width, height = primitive height.
+          const gw = Math.max(nearRect.width, Math.min(size.w, containerRect.width));
+          const gh = Math.min(size.h, containerRect.height);
+          const gx = nearRect.left + (nearRect.width - gw) / 2;
+          const gy = yEdge - gh / 2;
+          ghostRect = rectToPlain({
+            x: gx,
+            y: gy,
+            left: gx,
+            top: gy,
+            right: gx + gw,
+            bottom: gy + gh,
+            width: gw,
+            height: gh,
+          });
+        }
+
+        return { mode: bestSide, index: insertIndex, markerRect, ghostRect };
+      }
+
+      // Stash the last hint so drop can reuse the container path + index the
+      // user visually saw (instead of inferring from the drop event target).
+      let lastDropHint = null;
 
       document.addEventListener("dragover", (e) => {
         // Only react to Wonder primitive drags.
@@ -358,12 +566,23 @@
         if (!types.includes(DRAG_MIME)) return;
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-        const el = findDropTarget(e.target);
+        const container = findDropContainer(e.target)
+          || document.querySelector("[data-wonder-path]");
+        const path = container ? container.getAttribute("data-wonder-path") : "0";
+        const rect = container ? rectToPlain(container.getBoundingClientRect()) : null;
+
+        const hint = container ? computeDropHint(container, e.clientX, e.clientY) : null;
+        lastDropHint = hint ? { path, ...hint } : null;
+
         parent.postMessage(
           {
             type: "sandbox:dragOver",
-            path: el ? el.getAttribute("data-wonder-path") : "0",
-            rect: el ? el.getBoundingClientRect().toJSON() : null,
+            path,
+            rect,
+            index: hint ? hint.index : undefined,
+            markerRect: hint ? hint.markerRect : null,
+            ghostRect: hint ? hint.ghostRect : null,
+            mode: hint ? hint.mode : undefined,
           },
           "*",
         );
@@ -371,6 +590,7 @@
 
       document.addEventListener("dragleave", (e) => {
         if (e.relatedTarget) return;
+        lastDropHint = null;
         parent.postMessage({ type: "sandbox:dragLeave" }, "*");
       });
 
@@ -378,15 +598,23 @@
         const snippet = e.dataTransfer ? e.dataTransfer.getData(DRAG_MIME) : "";
         if (!snippet) return;
         e.preventDefault();
-        const el = findDropTarget(e.target);
         let parsed = null;
         try { parsed = JSON.parse(snippet); } catch {}
+        // Use the container + index computed during the last dragover so the
+        // drop lands exactly where the user saw the insertion line.
+        const path = lastDropHint
+          ? lastDropHint.path
+          : (findDropContainer(e.target)?.getAttribute("data-wonder-path") ?? "0");
+        const index = lastDropHint ? lastDropHint.index : undefined;
+        lastDropHint = null;
+        pendingDragSize = null;
         parent.postMessage(
           {
             type: "sandbox:drop",
-            path: el ? el.getAttribute("data-wonder-path") : "0",
+            path,
             snippet: parsed?.snippet ?? snippet,
             name: parsed?.componentName,
+            index,
           },
           "*",
         );

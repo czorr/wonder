@@ -28,7 +28,13 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [sel, setSel] = useState<SelectionInfo | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ path: string; rect: Rect } | null>(null);
+  const [dropTarget, setDropTarget] = useState<{
+    path: string;
+    rect: Rect;
+    marker: Rect | null;
+    ghost: Rect | null;
+    mode: "inside" | "before" | "after" | undefined;
+  } | null>(null);
   const editingPath = useRef<string | null>(null);
   const draggingRef = useRef(false);
   const selectComponent = useProject((s) => s.selectComponent);
@@ -164,15 +170,29 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
             editingPath.current = null;
           }}
           onDragOver={(evt) => {
-            if (evt.path && evt.rect) setDropTarget({ path: evt.path, rect: evt.rect });
-            else setDropTarget(null);
+            if (evt.path && evt.rect) {
+              setDropTarget({
+                path: evt.path,
+                rect: evt.rect,
+                marker: evt.markerRect ?? null,
+                ghost: evt.ghostRect ?? null,
+                mode: evt.mode,
+              });
+            } else {
+              setDropTarget(null);
+            }
           }}
           onDragLeave={() => setDropTarget(null)}
           onDrop={(evt) => {
             setDropTarget(null);
             const path = evt.path ?? "0";
             try {
-              const next = insertChildAtPath(component.source, path, evt.snippet);
+              const next = insertChildAtPath(
+                component.source,
+                path,
+                evt.snippet,
+                evt.index,
+              );
               setSource(component.id, next);
               selectComponent(component.id);
               selectElement(path);
@@ -198,15 +218,42 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
         ) : null}
         {selected && sel ? <SelectionOverlay sel={sel} /> : null}
         {dropTarget ? (
-          <div
-            className="pointer-events-none absolute rounded-sm ring-2 ring-accent ring-offset-1 ring-offset-white/60 bg-accent/10"
-            style={{
-              left: dropTarget.rect.left,
-              top: dropTarget.rect.top,
-              width: dropTarget.rect.width,
-              height: dropTarget.rect.height,
-            }}
-          />
+          <>
+            {/* Subtle parent outline so you know which container owns the drop. */}
+            <div
+              className="pointer-events-none absolute rounded-sm ring-1 ring-accent/70 bg-accent/5"
+              style={{
+                left: dropTarget.rect.left,
+                top: dropTarget.rect.top,
+                width: dropTarget.rect.width,
+                height: dropTarget.rect.height,
+              }}
+            />
+            {/* Ghost preview: rect the size of the primitive where it WILL land. */}
+            {dropTarget.ghost ? (
+              <div
+                className="pointer-events-none absolute rounded-md border-2 border-dashed border-accent bg-accent/15"
+                style={{
+                  left: dropTarget.ghost.left,
+                  top: dropTarget.ghost.top,
+                  width: dropTarget.ghost.width,
+                  height: dropTarget.ghost.height,
+                }}
+              />
+            ) : null}
+            {/* Insertion line between siblings (or inside empty container). */}
+            {dropTarget.marker ? (
+              <div
+                className="pointer-events-none absolute rounded-[2px] bg-accent shadow-[0_0_0_1px_rgba(255,255,255,0.9)]"
+                style={{
+                  left: dropTarget.marker.left,
+                  top: dropTarget.marker.top,
+                  width: Math.max(2, dropTarget.marker.width),
+                  height: Math.max(2, dropTarget.marker.height),
+                }}
+              />
+            ) : null}
+          </>
         ) : null}
       </div>
       {selected && (

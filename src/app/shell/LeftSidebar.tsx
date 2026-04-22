@@ -71,19 +71,28 @@ export function LeftSidebar() {
   };
 
   const onPrimitiveClick = (p: Primitive) => {
-    // If a child element (not root) is selected, insert as child.
+    // If a child element (not root) is selected, insert as SIBLING after it.
+    // This matches the Figma behavior: "new thing appears next to what I picked."
     if (selectedId && selectedPath && selectedPath !== "0") {
       const comp = components[selectedId];
       if (!comp) return;
       try {
-        const next = insertChildAtPath(comp.source, selectedPath, p.snippet);
+        const parts = selectedPath.split(".").map(Number);
+        const parentPath = parts.slice(0, -1).join(".");
+        const siblingIdx = parts[parts.length - 1];
+        const next = insertChildAtPath(
+          comp.source,
+          parentPath,
+          p.snippet,
+          siblingIdx + 1,
+        );
         setSource(selectedId, next);
         return;
       } catch (e) {
         console.error(e);
       }
     }
-    // Root selected → still insert as child of root (commonly what user wants).
+    // Root selected → insert as last child of root.
     if (selectedId && selectedPath === "0") {
       const comp = components[selectedId];
       if (comp) {
@@ -298,6 +307,15 @@ function PrimitiveCard({
   primitive: Primitive;
   onClick?: () => void;
 }) {
+  const broadcastToSandboxes = (msg: unknown) => {
+    // Wonder sandboxes live inside iframes rendered by ComponentFrame.
+    // We can't read their data during dragover (only during drop), so we push
+    // the primitive size eagerly so each sandbox can render a properly-sized
+    // ghost preview as the user drags.
+    const iframes = document.querySelectorAll<HTMLIFrameElement>("iframe");
+    iframes.forEach((f) => f.contentWindow?.postMessage(msg, "*"));
+  };
+
   const onDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData(
       "application/x-wonder-primitive",
@@ -308,11 +326,17 @@ function PrimitiveCard({
       }),
     );
     e.dataTransfer.effectAllowed = "copy";
+    broadcastToSandboxes({ type: "wonder:dragStart", size: primitive.size });
+  };
+
+  const onDragEnd = () => {
+    broadcastToSandboxes({ type: "wonder:dragEnd" });
   };
   return (
     <button
       draggable
       onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       onClick={onClick}
       className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-md border border-stroke bg-panel hover:border-stroke-strong hover:bg-panel-soft active:cursor-grabbing"
     >

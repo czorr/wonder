@@ -19,10 +19,18 @@ export function parseJSXSnippet(snippet: string): t.JSXElement {
   return init;
 }
 
+/**
+ * Inserts `snippet` as a child of the JSX element at `path`.
+ *
+ * @param index  Zero-based sibling index among JSXElement children of the target.
+ *               `0` inserts at the beginning, `N` inserts after the Nth element child.
+ *               Omit or pass a value ≥ child count to append at the end.
+ */
 export function insertChildAtPath(
   code: string,
   path: WonderPath,
   snippet: string,
+  index?: number,
 ): string {
   const ast = parseSource(code);
   const root = findRootJSXElement(ast);
@@ -38,7 +46,43 @@ export function insertChildAtPath(
     );
   }
 
-  target.children.push(t.jsxText("\n  "), child, t.jsxText("\n"));
+  const children = target.children;
+  const elementChildCount = children.filter((c) => t.isJSXElement(c)).length;
+  const appendMode =
+    index === undefined ||
+    index === null ||
+    index >= elementChildCount ||
+    index < 0;
+
+  if (appendMode) {
+    children.push(t.jsxText("\n  "), child, t.jsxText("\n"));
+    return printSource(ast);
+  }
+
+  // Insert BEFORE the Nth JSXElement child, preserving surrounding indentation.
+  let seen = 0;
+  for (let i = 0; i < children.length; i++) {
+    const c = children[i];
+    if (!t.isJSXElement(c)) continue;
+    if (seen === index) {
+      // Pull leading whitespace-only JSXText (indentation for the sibling we
+      // insert before) so the new node and its marker slot in cleanly.
+      let insertAt = i;
+      if (
+        insertAt > 0 &&
+        t.isJSXText(children[insertAt - 1]) &&
+        /^\s*$/.test((children[insertAt - 1] as t.JSXText).value)
+      ) {
+        insertAt -= 1;
+      }
+      children.splice(insertAt, 0, t.jsxText("\n  "), child);
+      return printSource(ast);
+    }
+    seen++;
+  }
+
+  // Fallback (shouldn't happen given bounds check above): append.
+  children.push(t.jsxText("\n  "), child, t.jsxText("\n"));
   return printSource(ast);
 }
 

@@ -1,7 +1,11 @@
-import { X, FileCode2, Check } from "lucide-react";
+import { X, FileCode2, Check, Loader2, GripHorizontal, Wand2 } from "lucide-react";
 import Editor, { type OnMount, type BeforeMount } from "@monaco-editor/react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useProject } from "@/store/project";
+
+const MIN_PANEL_HEIGHT = 120;
+const MAX_PANEL_HEIGHT_MARGIN = 220; // leave at least this much of the window above the panel
+const DEFAULT_PANEL_HEIGHT = 260;
 
 export function CodePanel() {
   const openTabs = useProject((s) => s.openTabs);
@@ -16,19 +20,50 @@ export function CodePanel() {
   // Track the last value we pushed in from outside (not typed by user)
   const externalValueRef = useRef<string>("");
 
-  // When active source changes externally (e.g. inspector), sync to editor
-  // without using the controlled `value` prop so Monaco doesn't reformat.
+  // --- Resizable panel height (drag the top edge to resize) ---------------
+  const [height, setHeight] = useState<number>(DEFAULT_PANEL_HEIGHT);
+  const onResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = height;
+    const onMove = (ev: MouseEvent) => {
+      const delta = startY - ev.clientY;
+      const maxH = Math.max(
+        MIN_PANEL_HEIGHT,
+        window.innerHeight - MAX_PANEL_HEIGHT_MARGIN,
+      );
+      const next = Math.min(maxH, Math.max(MIN_PANEL_HEIGHT, startH + delta));
+      setHeight(next);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [height]);
+
+  // --- "synced" / "editing" status --------------------------------------
+  const [dirty, setDirty] = useState(false);
+  const dirtyTimer = useRef<number | null>(null);
+  const markDirty = useCallback(() => {
+    setDirty(true);
+    if (dirtyTimer.current) window.clearTimeout(dirtyTimer.current);
+    dirtyTimer.current = window.setTimeout(() => setDirty(false), 280);
+  }, []);
+
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor || !active) return;
     const incoming = active.source;
-    // If editor already has this content (user just typed it), skip.
     if (editor.getValue() === incoming) return;
-    // Only push if it truly came from outside (store changed externally).
     externalValueRef.current = incoming;
     const model = editor.getModel();
     if (!model) return;
-    // Preserve cursor/scroll position across external edits.
     const position = editor.getPosition();
     const scrollTop = editor.getScrollTop();
     model.setValue(incoming);
@@ -39,15 +74,55 @@ export function CodePanel() {
   const onChange = useCallback(
     (v: string | undefined) => {
       if (!active || v === undefined) return;
-      // Mark that this value came from the user typing.
       externalValueRef.current = v;
+      markDirty();
       setSource(active.id, v);
     },
-    [active, setSource],
+    [active, setSource, markDirty],
   );
 
+  const onPrettify = useCallback(async () => {
+    const editor = editorRef.current;
+    if (!editor || !active) return;
+    try {
+      // Prettier ships ESM browser builds that work in Vite without a worker.
+      // Plugins must be imported separately and passed in explicitly.
+      const prettier = await import("prettier/standalone");
+      const pluginEstree = (await import("prettier/plugins/estree")).default;
+      const pluginBabel = await import("prettier/plugins/babel");
+      const pluginTs = await import("prettier/plugins/typescript");
+      const source = editor.getValue();
+      const formatted = await prettier.format(source, {
+        parser: "typescript",
+        plugins: [pluginEstree, pluginBabel, pluginTs],
+        semi: true,
+        singleQuote: false,
+        tabWidth: 2,
+        printWidth: 80,
+        trailingComma: "all",
+        jsxSingleQuote: false,
+        bracketSameLine: false,
+      });
+      // Preserve cursor + scroll.
+      const model = editor.getModel();
+      if (!model) return;
+      const position = editor.getPosition();
+      const scrollTop = editor.getScrollTop();
+      model.pushEditOperations(
+        [],
+        [{ range: model.getFullModelRange(), text: formatted }],
+        () => null,
+      );
+      if (position) editor.setPosition(position);
+      editor.setScrollTop(scrollTop);
+      setSource(active.id, formatted);
+      editor.focus();
+    } catch (err) {
+      console.error("[prettify] failed:", err);
+    }
+  }, [active, setSource]);
+
   const beforeMount: BeforeMount = (monaco) => {
-    // Configure TypeScript so JSX is valid.
     monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
       jsx: monaco.languages.typescript.JsxEmit.React,
       esModuleInterop: true,
@@ -59,7 +134,6 @@ export function CodePanel() {
       noEmit: true,
     });
 
-    // Suppress "Cannot find module" errors for external packages.
     monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
       noSemanticValidation: false,
       noSyntaxValidation: false,
@@ -100,7 +174,6 @@ declare namespace React {
       "file:///react.d.ts",
     );
 
-    // Stubs for common imports used in Wonder components.
     monaco.languages.typescript.typescriptDefaults.addExtraLib(
       `
 declare module "react/jsx-runtime" {
@@ -115,95 +188,10 @@ declare module "react/jsx-dev-runtime" {
 declare module "lucide-react" {
   export type LucideProps = { size?: number; strokeWidth?: number; className?: string; color?: string };
   export type LucideIcon = (props: LucideProps) => React.ReactNode;
+  const _default: { [key: string]: LucideIcon };
+  export default _default;
   export const TrendingUp: LucideIcon;
   export const TrendingDown: LucideIcon;
-  export const DollarSign: LucideIcon;
-  export const Users: LucideIcon;
-  export const ShoppingCart: LucideIcon;
-  export const BarChart: LucideIcon;
-  export const ArrowUp: LucideIcon;
-  export const ArrowDown: LucideIcon;
-  export const Check: LucideIcon;
-  export const X: LucideIcon;
-  export const Plus: LucideIcon;
-  export const Minus: LucideIcon;
-  export const Search: LucideIcon;
-  export const Settings: LucideIcon;
-  export const Star: LucideIcon;
-  export const Heart: LucideIcon;
-  export const Bell: LucideIcon;
-  export const Mail: LucideIcon;
-  export const Home: LucideIcon;
-  export const Menu: LucideIcon;
-  export const ChevronRight: LucideIcon;
-  export const ChevronDown: LucideIcon;
-  export const ChevronUp: LucideIcon;
-  export const ChevronLeft: LucideIcon;
-  export const Sparkles: LucideIcon;
-  export const Zap: LucideIcon;
-  export const Shield: LucideIcon;
-  export const Lock: LucideIcon;
-  export const Unlock: LucideIcon;
-  export const Eye: LucideIcon;
-  export const EyeOff: LucideIcon;
-  export const Upload: LucideIcon;
-  export const Download: LucideIcon;
-  export const Link: LucideIcon;
-  export const ExternalLink: LucideIcon;
-  export const Copy: LucideIcon;
-  export const Trash: LucideIcon;
-  export const Edit: LucideIcon;
-  export const RefreshCw: LucideIcon;
-  export const Info: LucideIcon;
-  export const AlertCircle: LucideIcon;
-  export const CheckCircle: LucideIcon;
-  export const XCircle: LucideIcon;
-  export const Circle: LucideIcon;
-  export const Dot: LucideIcon;
-  export const Globe: LucideIcon;
-  export const Map: LucideIcon;
-  export const Package: LucideIcon;
-  export const Box: LucideIcon;
-  export const Layers: LucideIcon;
-  export const Layout: LucideIcon;
-  export const Grid: LucideIcon;
-  export const List: LucideIcon;
-  export const Table: LucideIcon;
-  export const FileText: LucideIcon;
-  export const File: LucideIcon;
-  export const Folder: LucideIcon;
-  export const Image: LucideIcon;
-  export const Camera: LucideIcon;
-  export const Video: LucideIcon;
-  export const Music: LucideIcon;
-  export const Mic: LucideIcon;
-  export const Phone: LucideIcon;
-  export const MessageSquare: LucideIcon;
-  export const Send: LucideIcon;
-  export const Share: LucideIcon;
-  export const Bookmark: LucideIcon;
-  export const Tag: LucideIcon;
-  export const Flag: LucideIcon;
-  export const Target: LucideIcon;
-  export const Award: LucideIcon;
-  export const Gift: LucideIcon;
-  export const Calendar: LucideIcon;
-  export const Clock: LucideIcon;
-  export const Timer: LucideIcon;
-  export const Activity: LucideIcon;
-  export const Cpu: LucideIcon;
-  export const Database: LucideIcon;
-  export const Server: LucideIcon;
-  export const Wifi: LucideIcon;
-  export const Bluetooth: LucideIcon;
-  export const Battery: LucideIcon;
-  export const Power: LucideIcon;
-  export const Sun: LucideIcon;
-  export const Moon: LucideIcon;
-  export const Cloud: LucideIcon;
-  export const Wind: LucideIcon;
-  export const Umbrella: LucideIcon;
-  [key: string]: LucideIcon | any;
 }
 declare module "motion" {
   export const motion: any;
@@ -244,8 +232,28 @@ declare module "motion" {
     monaco.editor.setTheme("wonder-light");
   };
 
+  // Derive file extension badge from the active tab's filename (TSX / TS / JSX / JS).
+  const ext = active?.filename.match(/\.([^.]+)$/)?.[1]?.toUpperCase() ?? "";
+
   return (
-    <section className="flex h-[260px] shrink-0 flex-col border-t border-stroke bg-panel">
+    <section
+      className="relative flex shrink-0 flex-col border-t border-stroke bg-panel"
+      style={{ height }}
+    >
+      {/* Resize handle — drag the top edge to resize the code panel. */}
+      <div
+        onMouseDown={onResizeStart}
+        title="Drag to resize"
+        className="group absolute inset-x-0 -top-[3px] z-10 flex h-[6px] cursor-ns-resize items-center justify-center"
+      >
+        <div className="h-[2px] w-10 rounded-full bg-transparent group-hover:bg-accent/60 transition" />
+        <GripHorizontal
+          size={14}
+          strokeWidth={1.75}
+          className="pointer-events-none absolute text-ink-faint opacity-0 group-hover:opacity-100 transition"
+        />
+      </div>
+
       <div className="flex items-center justify-between border-b border-stroke pr-2">
         <div className="flex items-center overflow-x-auto">
           {openTabs.map((id) => {
@@ -283,11 +291,35 @@ declare module "motion" {
           })}
         </div>
         <div className="flex shrink-0 items-center gap-3 text-[10px] text-ink-muted">
-          <span className="flex items-center gap-1 rounded-full bg-accent-tint px-2 py-0.5 text-accent-ink font-medium">
-            <Check size={10} strokeWidth={2.5} /> synced
-          </span>
+          {active ? (
+            <button
+              onClick={onPrettify}
+              title="Prettify (format document)"
+              className="flex items-center gap-1 rounded-md border border-stroke px-2 py-0.5 text-ink-muted hover:bg-panel-soft hover:text-ink"
+            >
+              <Wand2 size={10} strokeWidth={2} />
+              Prettify
+            </button>
+          ) : null}
+          {active ? (
+            dirty ? (
+              <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-amber-800 font-medium">
+                <Loader2 size={10} strokeWidth={2.5} className="animate-spin" />
+                editing
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 rounded-full bg-accent-tint px-2 py-0.5 text-accent-ink font-medium">
+                <Check size={10} strokeWidth={2.5} /> synced
+              </span>
+            )
+          ) : null}
+          {active ? (
+            <span className="text-ink-faint">
+              {active.source.split("\n").length} lines
+            </span>
+          ) : null}
           <span className="text-ink-faint">UTF-8</span>
-          <span className="text-ink-faint">TSX</span>
+          {ext ? <span className="text-ink-faint">{ext}</span> : null}
         </div>
       </div>
       <div className="min-h-0 flex-1">
