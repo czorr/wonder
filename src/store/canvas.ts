@@ -7,6 +7,15 @@ type CanvasState = {
   pan: { x: number; y: number };
   previewOpen: boolean;
   tool: CanvasTool;
+  /**
+   * Play mode: when true, the canvas still renders in place but the editor
+   * chrome steps out of the way. Frames lose their drag/resize handles and
+   * selection overlays, and the sandbox stops intercepting clicks/dblclicks —
+   * so :hover / :focus / :active CSS states fire for real, button onClicks
+   * run, and motion animations behave as they would in production. Think of
+   * it as "preview the component in context" without losing zoom/pan.
+   */
+  playMode: boolean;
 
   setZoom: (z: number | ((prev: number) => number)) => void;
   setPan: (p: { x: number; y: number } | ((prev: { x: number; y: number }) => { x: number; y: number })) => void;
@@ -17,6 +26,8 @@ type CanvasState = {
   zoomFit: (contentW: number, contentH: number, viewW: number, viewH: number) => void;
   openPreview: () => void;
   closePreview: () => void;
+  setPlayMode: (on: boolean) => void;
+  togglePlayMode: () => void;
 };
 
 const ZOOM_MIN = 0.1;
@@ -40,9 +51,17 @@ export const useCanvas = create<CanvasState>((set) => ({
   pan: { x: 60, y: 60 },
   previewOpen: false,
   tool: "select",
+  playMode: false,
 
   setTool(t) {
     set({ tool: t });
+  },
+
+  setPlayMode(on) {
+    set({ playMode: on });
+  },
+  togglePlayMode() {
+    set((s) => ({ playMode: !s.playMode }));
   },
 
   setZoom(z) {

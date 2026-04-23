@@ -18,6 +18,8 @@ export type SandboxHandle = {
   setViewport: (width: number | null) => void;
   /** Push fresh token utility CSS into the iframe's <style id="wonder-tokens">. */
   setTokensCss: (css: string) => void;
+  /** Toggle play mode — see SandboxOutgoing `sandbox:setInteractive`. */
+  setInteractive: (interactive: boolean) => void;
 };
 
 type SandboxProps = {
@@ -162,6 +164,15 @@ export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
         } else {
           pendingTokensRef.current = css;
         }
+      },
+      setInteractive(interactive) {
+        // Safe to send before ready — the runtime reads its flag on every
+        // event, so even a dropped message just defaults to editor mode,
+        // which is the boot state we want anyway.
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: "sandbox:setInteractive", interactive } satisfies SandboxOutgoing,
+          "*",
+        );
       },
     }),
     [ready],

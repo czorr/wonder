@@ -70,7 +70,15 @@ export type SandboxOutgoing =
    * pick up the user's current values — Tailwind Play CDN inside the iframe
    * has no idea those utilities exist otherwise.
    */
-  | { type: "sandbox:setTokensCss"; css: string };
+  | { type: "sandbox:setTokensCss"; css: string }
+  /**
+   * Toggle "play" mode inside the iframe. When `interactive` is true, the
+   * runtime stops intercepting clicks and dblclicks so the component's own
+   * event handlers run and text-edit-on-dblclick is off. Selection / hover
+   * overlays still get their rect updates (the parent chrome hides them
+   * anyway) but the canvas stops behaving like an editor.
+   */
+  | { type: "sandbox:setInteractive"; interactive: boolean };
 
 export function isSandboxMessage(data: unknown): data is SandboxIncoming {
   return (

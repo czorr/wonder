@@ -226,12 +226,23 @@
             document.head.appendChild(style);
           }
           style.textContent = msg.css || "";
+        } else if (msg.type === "sandbox:setInteractive") {
+          // "Play" mode: stop capturing clicks / dblclicks so the component's
+          // own onClick handlers run and CSS :hover/:focus/:active behave for
+          // real. We keep listening — just gate the editor-specific work.
+          INTERACTIVE = !!msg.interactive;
+          // Leave any mid-edit text state cleanly when entering play mode.
+          if (INTERACTIVE && editingEl) cancelEdit();
         }
       });
+
+      // Defaults to editor mode. The parent flips this via `sandbox:setInteractive`.
+      let INTERACTIVE = false;
 
       document.addEventListener(
         "click",
         (e) => {
+          if (INTERACTIVE) return; // let the component's own handlers fire
           const target = e.target;
           if (!(target instanceof Element)) return;
           const el = target.closest("[data-wonder-path]");
@@ -291,6 +302,7 @@
       document.addEventListener(
         "dblclick",
         (e) => {
+          if (INTERACTIVE) return; // play mode: no text-edit affordance
           const target = e.target;
           if (!(target instanceof Element)) return;
           const el = target.closest("[data-wonder-path]");
@@ -332,6 +344,7 @@
           if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); commitEdit(); }
           return;
         }
+        if (INTERACTIVE) return; // play mode: don't steal Backspace from inputs
         if (e.key === "Backspace" || e.key === "Delete") {
           e.preventDefault();
           parent.postMessage({ type: "sandbox:deleteKey" }, "*");
@@ -345,6 +358,7 @@
       }, true);
 
       document.addEventListener("mouseover", (e) => {
+        if (INTERACTIVE) return; // play mode: no hover-rect telemetry
         const target = e.target;
         if (!(target instanceof Element)) return;
         const el = target.closest("[data-wonder-path]");
@@ -575,6 +589,7 @@
       let lastDropHint = null;
 
       document.addEventListener("dragover", (e) => {
+        if (INTERACTIVE) return; // play mode: no authoring drops
         // Only react to Wonder primitive drags.
         const types = e.dataTransfer ? Array.from(e.dataTransfer.types) : [];
         if (!types.includes(DRAG_MIME)) return;
@@ -609,6 +624,7 @@
       });
 
       document.addEventListener("drop", (e) => {
+        if (INTERACTIVE) return;
         const snippet = e.dataTransfer ? e.dataTransfer.getData(DRAG_MIME) : "";
         if (!snippet) return;
         e.preventDefault();

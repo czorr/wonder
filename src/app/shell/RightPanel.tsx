@@ -134,7 +134,60 @@ function radiusSuffixPx(suffix: string | undefined): number | null {
   return match?.px ?? null;
 }
 
-const STATE_TABS = ["base", "hover", "focus", "active"];
+// ---------------------------------------------------------------------------
+// State variants (Tailwind class-name prefixes).
+//
+// The top of the inspector lets the user pick which *state* they're editing.
+// Picking `hover` means every class written by the panel lands with a
+// `hover:` prefix, and the reads are filtered to only show classes that
+// carry that prefix (stripped, so the field helpers keep working on bare
+// Tailwind tokens). `base` is the default, unprefixed slot.
+//
+// A few Tailwind variants we chose NOT to surface yet:
+//   - `group-hover:` / `peer-*` — cross-element state, more complex to
+//     explain in a flat inspector.
+//   - `dark:` — deserves its own top-level toggle (design-system level,
+//     not per-element).
+//   - Breakpoints (`sm:`, `md:` …) — responsive belongs in a separate
+//     picker so it stacks cleanly with state variants, not a shared tab.
+// ---------------------------------------------------------------------------
+
+const STATE_TABS = ["base", "hover", "focus", "active"] as const;
+type StateVariant = (typeof STATE_TABS)[number];
+const VARIANT_PREFIXES = new Set<string>(STATE_TABS.filter((s) => s !== "base"));
+
+/** Extract the leading `hover:` / `focus:` / `active:` prefix, or `null`
+ *  if the class has no known state prefix. We only peel ONE prefix — nested
+ *  variants like `hover:focus:bg-red` aren't supported yet, but if they
+ *  showed up the outer variant still reads correctly. */
+function variantOf(cls: string): StateVariant | "base" {
+  const idx = cls.indexOf(":");
+  if (idx < 0) return "base";
+  const p = cls.slice(0, idx);
+  return VARIANT_PREFIXES.has(p) ? (p as StateVariant) : "base";
+}
+
+/** Strip any `hover:`/`focus:`/`active:` prefix. Safe to call on already
+ *  unprefixed classes — they come back unchanged. */
+function stripVariant(cls: string): string {
+  const v = variantOf(cls);
+  return v === "base" ? cls : cls.slice(v.length + 1);
+}
+
+/** Attach the current variant's prefix to a bare Tailwind token. Base is
+ *  the identity function so existing callers that don't care about
+ *  variants still round-trip. */
+function withVariant(state: StateVariant, cls: string): string {
+  return state === "base" ? cls : `${state}:${cls}`;
+}
+
+/** True when `cls` belongs to the given variant slot. Used both to
+ *  filter the class list the inspector shows AND to scope the "clear
+ *  before write" passes in color / gap / corner writers so a hover edit
+ *  never stomps on the base value. */
+function clsBelongsTo(cls: string, state: StateVariant): boolean {
+  return variantOf(cls) === state;
+}
 
 const DISPLAY_OPTIONS: { value: string; icon: AppIconName; label: string }[] = [
   { value: "block", icon: "Square", label: "block" },
@@ -337,7 +390,7 @@ export function RightPanel() {
   const selectElement = useProject((s) => s.selectElement);
   const setSource = useProject((s) => s.setSource);
 
-  const [state, setState] = useState<string>("base");
+  const [state, setState] = useState<StateVariant>("base");
   // Layers tab is deliberately not here — removed for now until the AST-based
   // tree view can be built properly (needs delete-node + move-node helpers).
   const [panel, setPanel] = useState<"design" | "props">("design");
@@ -356,7 +409,14 @@ export function RightPanel() {
       ? { w: selRect.w, h: selRect.h }
       : undefined;
 
-  const classes = useMemo(() => {
+  // `rawClasses` is the unfiltered list as written on the element (e.g. may
+  // contain `bg-red-500 hover:bg-red-600 focus:ring-2`). `classes` is scoped
+  // to the current state tab — filtered to the selected variant and with the
+  // variant prefix stripped — so the rest of the panel can read/write in the
+  // user's mental model ("the hover background is red-600") without having
+  // to think about prefixes. All mutation helpers below re-apply the prefix
+  // via `withVariant(state, ...)` before writing.
+  const rawClasses = useMemo(() => {
     if (!component) return [];
     try {
       return getClassNameAtPath(component.source, path);
@@ -364,6 +424,25 @@ export function RightPanel() {
       return [];
     }
   }, [component, path]);
+
+  const classes = useMemo(
+    () =>
+      rawClasses
+        .filter((c) => clsBelongsTo(c, state))
+        .map(stripVariant),
+    [rawClasses, state],
+  );
+
+  // How many overrides each variant has — drives the count pips next to
+  // each state tab so the user can see at a glance which states are touched.
+  const variantCounts = useMemo(() => {
+    const counts: Record<StateVariant, number> = { base: 0, hover: 0, focus: 0, active: 0 };
+    for (const c of rawClasses) {
+      const v = variantOf(c);
+      counts[v] = (counts[v] ?? 0) + 1;
+    }
+    return counts;
+  }, [rawClasses]);
 
   const find = (pred: (c: string) => boolean) => classes.find(pred);
 
@@ -444,7 +523,8 @@ export function RightPanel() {
 
   // Gap: decoupled X/Y. Unified `gap-N` is resolved into both axes so the
   // initial render isn't blank when the file uses the old single-class form.
-  const gapClasses = useMemo(() => readGapClasses(classes), [classes]);
+  // (Writes go through `writeGapBoth`, which clears by regex rather than by
+  // reading the old classes — so we only need `gapN` here.)
   const gapN = useMemo(() => readGapN(classes), [classes]);
 
   const baselineRef = useRef<string | null>(null);
@@ -462,11 +542,17 @@ export function RightPanel() {
     baselineRef.current = null;
   };
 
+  // `swap` receives *bare* classes (e.g. "bg-red-500", "flex") in the user's
+  // current variant frame. We re-apply the active state prefix before writing
+  // so edits made while the hover tab is active produce `hover:bg-red-500`,
+  // leaving other variants untouched.
   const swap = (oldClass: string | undefined, next: string) => {
     if (!component) return;
     try {
       const base = baselineRef.current ?? component.source;
-      const updated = setClassAtPath(base, path, oldClass ?? next, next);
+      const oldRaw = oldClass ? withVariant(state, oldClass) : null;
+      const nextRaw = next ? withVariant(state, next) : "";
+      const updated = setClassAtPath(base, path, oldRaw ?? nextRaw, nextRaw);
       setSource(component.id, updated);
     } catch (e) {
       console.error(e);
@@ -492,15 +578,22 @@ export function RightPanel() {
     if (!component) return;
     try {
       const base = baselineRef.current ?? component.source;
-      const cleared = removeClassesAtPath(
-        base,
-        path,
-        (c) =>
-          c.startsWith(`${prefix}-`) &&
-          mergedByName.has(c.slice(prefix.length + 1)),
-      );
+      // Clear only the color classes that belong to the currently-selected
+      // variant. `bg-red-500` at base is left intact when the user is
+      // editing the hover state — so tabbing back to base still shows the
+      // original base color.
+      const cleared = removeClassesAtPath(base, path, (c) => {
+        if (!clsBelongsTo(c, state)) return false;
+        const bare = stripVariant(c);
+        return (
+          bare.startsWith(`${prefix}-`) &&
+          mergedByName.has(bare.slice(prefix.length + 1))
+        );
+      });
       const updated = nextName
-        ? addClassesAtPath(cleared, path, [`${prefix}-${nextName}`])
+        ? addClassesAtPath(cleared, path, [
+            withVariant(state, `${prefix}-${nextName}`),
+          ])
         : cleared;
       setSource(component.id, updated);
     } catch (e) {
@@ -531,27 +624,26 @@ export function RightPanel() {
   // baseline string so we don't lose intermediate edits to parse errors.
   const writeGapBoth = (nextX: string, nextY: string) => {
     if (!component) return;
-    let src = component.source;
-    const op = (oldC: string, newC: string) => {
-      try {
-        src = setClassAtPath(src, path, oldC, newC);
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    if (gapClasses.unified) op(gapClasses.unified, "");
-    if (gapClasses.x) op(gapClasses.x, "");
-    if (gapClasses.y) op(gapClasses.y, "");
-    if (nextX === nextY) {
-      const cls = `gap-${nextX}`;
-      op(cls, cls);
-    } else {
-      const xc = `gap-x-${nextX}`;
-      const yc = `gap-y-${nextY}`;
-      op(xc, xc);
-      op(yc, yc);
+    try {
+      let src = component.source;
+      // Scoped clear — only gap-* classes that belong to the current
+      // variant are stripped. Anything on other states survives.
+      src = removeClassesAtPath(src, path, (c) => {
+        if (!clsBelongsTo(c, state)) return false;
+        return /^gap(?:-[xy])?-/.test(stripVariant(c));
+      });
+      const toAdd: string[] =
+        nextX === nextY
+          ? [withVariant(state, `gap-${nextX}`)]
+          : [
+              withVariant(state, `gap-x-${nextX}`),
+              withVariant(state, `gap-y-${nextY}`),
+            ];
+      src = addClassesAtPath(src, path, toAdd);
+      setSource(component.id, src);
+    } catch (e) {
+      console.error(e);
     }
-    setSource(component.id, src);
   };
 
   // Batched writer for per-corner radius. Similar shape: clear every
@@ -559,45 +651,44 @@ export function RightPanel() {
   // unified form when all four corners match.
   const writeCornerRadius = (corner: CornerKey, suffix: string) => {
     if (!component) return;
-    const next: Record<CornerKey, string> = {
-      tl: cornerMap.tl ?? "none",
-      tr: cornerMap.tr ?? "none",
-      br: cornerMap.br ?? "none",
-      bl: cornerMap.bl ?? "none",
-    };
-    next[corner] = suffix;
-    let src = component.source;
-    const op = (oldC: string, newC: string) => {
-      try {
-        src = setClassAtPath(src, path, oldC, newC);
-      } catch (e) {
-        console.error(e);
+    try {
+      const next: Record<CornerKey, string> = {
+        tl: cornerMap.tl ?? "none",
+        tr: cornerMap.tr ?? "none",
+        br: cornerMap.br ?? "none",
+        bl: cornerMap.bl ?? "none",
+      };
+      next[corner] = suffix;
+
+      let src = component.source;
+      // Clear every rounded-* class that belongs to the current variant.
+      // Other variants' radii are preserved.
+      src = removeClassesAtPath(src, path, (c) => {
+        if (!clsBelongsTo(c, state)) return false;
+        return /^rounded(?:-(?:tl|tr|br|bl|t|b|l|r))?(?:-(?:none|sm|md|lg|xl|2xl|3xl|full))?$/.test(
+          stripVariant(c),
+        );
+      });
+
+      const allEqual =
+        next.tl === next.tr && next.tr === next.br && next.br === next.bl;
+      const toAdd: string[] = [];
+      if (allEqual) {
+        const cls = next.tl === "" ? "rounded" : `rounded-${next.tl}`;
+        toAdd.push(withVariant(state, cls));
+      } else {
+        for (const c of RADIUS_CORNERS) {
+          const s = next[c.key];
+          if (s === "none") continue; // `rounded-X-none` is rarely needed; omit → inherits 0
+          const cls = s === "" ? c.tailwindBase : `${c.tailwindBase}-${s}`;
+          toAdd.push(withVariant(state, cls));
+        }
       }
-    };
-    // Remove every rounded-* class we know about.
-    for (const c of [...classes]) {
-      if (
-        /^rounded(?:-(?:tl|tr|br|bl|t|b|l|r))?(?:-(?:none|sm|md|lg|xl|2xl|3xl|full))?$/.test(
-          c,
-        )
-      ) {
-        op(c, "");
-      }
+      if (toAdd.length) src = addClassesAtPath(src, path, toAdd);
+      setSource(component.id, src);
+    } catch (e) {
+      console.error(e);
     }
-    const allEqual =
-      next.tl === next.tr && next.tr === next.br && next.br === next.bl;
-    if (allEqual) {
-      const cls = next.tl === "" ? "rounded" : `rounded-${next.tl}`;
-      op(cls, cls);
-    } else {
-      for (const c of RADIUS_CORNERS) {
-        const s = next[c.key];
-        if (s === "none") continue; // `rounded-X-none` is rarely needed; omit → inherits 0
-        const cls = s === "" ? c.tailwindBase : `${c.tailwindBase}-${s}`;
-        op(cls, cls);
-      }
-    }
-    setSource(component.id, src);
   };
 
   return (
@@ -626,36 +717,41 @@ export function RightPanel() {
       ) : null}
 
       {component ? (
-      <div className="flex items-center gap-1 border-b border-stroke px-3 py-1.5">
-        {STATE_TABS.map((s) => {
-          const active = s === state;
-          return (
-            <button
-              key={s}
-              onClick={() => setState(s)}
-              className={
-                "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] transition " +
-                (active
-                  ? "bg-accent-tint text-accent-ink"
-                  : "text-ink-muted hover:text-ink")
-              }
-            >
-              <span
+      <div className="border-b border-stroke px-3 py-1.5">
+        {/* Segmented state selector. Same visual language as the breakpoint
+            picker in the Topbar — thin rounded container, ink fill for the
+            active segment, muted text elsewhere. Overrides on a non-active
+            state are signaled with a tiny accent dot after the label so you
+            can tell at a glance which variants have edits without shouting
+            about it with colored pills. */}
+        <div className="inline-flex items-center rounded-md border border-stroke bg-panel-soft/60 p-0.5">
+          {STATE_TABS.map((s) => {
+            const active = s === state;
+            const hasEdits = variantCounts[s] > 0;
+            return (
+              <button
+                key={s}
+                onClick={() => setState(s)}
+                title={hasEdits && !active ? `${variantCounts[s]} override${variantCounts[s] === 1 ? "" : "s"}` : undefined}
                 className={
-                  "size-1.5 rounded-full " +
-                  (active ? "bg-accent" : "bg-ink-faint")
+                  "relative flex items-center gap-1 rounded-[5px] px-2 py-0.5 text-[10.5px] font-medium transition " +
+                  (active
+                    ? "bg-ink text-white shadow-sm"
+                    : "text-ink-muted hover:text-ink")
                 }
-              />
-              {s}
-            </button>
-          );
-        })}
+              >
+                {s}
+                {hasEdits && !active ? (
+                  <span className="size-1 rounded-full bg-accent" aria-hidden />
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
       </div>
       ) : null}
 
-      <div
-        className={"flex-1 overflow-auto " + (state !== "base" ? "[&_.wnd-field]:!bg-emerald-50 [&_.wnd-field]:!border-emerald-300 [&_input]:!bg-transparent [&_input]:!text-emerald-900" : "")}
-      >
+      <div className="flex-1 overflow-auto">
         {panel === "props" && component ? (
           <PropsPanel
             component={component}
@@ -675,8 +771,10 @@ export function RightPanel() {
                 const toRemove = [currentDisplay, currentDirection, currentJustify, currentAlignItems, currentGap].filter(Boolean) as string[];
                 if (!component || toRemove.length === 0) return;
                 let src = component.source;
+                // `currentX` values are bare (variant-stripped); re-prefix
+                // before deleting so we only clear the current state's entries.
                 for (const cls of toRemove) {
-                  try { src = setClassAtPath(src, path, cls, ""); } catch {}
+                  try { src = setClassAtPath(src, path, withVariant(state, cls), ""); } catch {}
                 }
                 setSource(component.id, src);
               }}
@@ -775,7 +873,7 @@ export function RightPanel() {
                 if (toRemove.length === 0) return;
                 let src = component.source;
                 for (const cls of toRemove) {
-                  try { src = setClassAtPath(src, path, cls, ""); } catch {}
+                  try { src = setClassAtPath(src, path, withVariant(state, cls), ""); } catch {}
                 }
                 setSource(component.id, src);
               }}

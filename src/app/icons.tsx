@@ -77,6 +77,10 @@ export const ICON_MAP = {
   Eye: "mingcute:eye-line",
   EyeOff: "mingcute:eye-close-line",
 
+  // — Playback / play mode —
+  Play: "mingcute:play-line",
+  Stop: "mingcute:stop-line",
+
   // — Text alignment —
   AlignLeft: "mingcute:align-left-line",
   AlignCenter: "mingcute:align-center-line",

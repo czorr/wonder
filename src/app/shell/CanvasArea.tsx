@@ -19,6 +19,7 @@ export function CanvasArea() {
   const setPan = useCanvas((s) => s.setPan);
   const tool = useCanvas((s) => s.tool);
   const setTool = useCanvas((s) => s.setTool);
+  const playMode = useCanvas((s) => s.playMode);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [spaceHeld, setSpaceHeld] = useState(false);
@@ -109,6 +110,9 @@ export function CanvasArea() {
         setTool("hand");
       }
       if (e.key === "Backspace" || e.key === "Delete") {
+        // Don't delete the selected element while play mode is on — the
+        // component might have its own keyboard handling.
+        if (useCanvas.getState().playMode) return;
         const t = e.target as HTMLElement | null;
         if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
         if (t && typeof t.closest === "function" && t.closest(".monaco-editor")) return;
@@ -155,12 +159,14 @@ export function CanvasArea() {
   };
 
   const onDragOverBg = (e: React.DragEvent) => {
+    if (playMode) return; // no authoring drops while previewing
     if (!Array.from(e.dataTransfer.types).includes("application/x-wonder-primitive")) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
   };
 
   const onDropBg = (e: React.DragEvent) => {
+    if (playMode) return;
     const raw = e.dataTransfer.getData("application/x-wonder-primitive");
     if (!raw) return;
     e.preventDefault();

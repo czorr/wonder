@@ -25,6 +25,8 @@ export function Topbar() {
   const openPreview = useCanvas((s) => s.openPreview);
   const tool = useCanvas((s) => s.tool);
   const setTool = useCanvas((s) => s.setTool);
+  const playMode = useCanvas((s) => s.playMode);
+  const togglePlayMode = useCanvas((s) => s.togglePlayMode);
 
   const components = useProject((s) => s.components);
   const order = useProject((s) => s.order);
@@ -254,6 +256,20 @@ export function Topbar() {
           className="grid size-7 place-items-center rounded-lg border border-stroke bg-panel text-ink-muted hover:text-ink transition"
         >
           <AppIcon name="Refresh" size={13} />
+        </button>
+
+        <button
+          onClick={togglePlayMode}
+          title={playMode ? "Stop — back to editor" : "Play — interactive mode (hover/focus/active, animations)"}
+          className={
+            "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition " +
+            (playMode
+              ? "border-accent bg-accent text-white shadow-sm hover:brightness-105"
+              : "border-stroke bg-panel text-ink-soft hover:border-stroke-strong hover:text-ink")
+          }
+        >
+          <AppIcon name={playMode ? "Square" : "Play"} size={12} />
+          {playMode ? "Stop" : "Play"}
         </button>
 
         <button

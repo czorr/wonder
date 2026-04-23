@@ -8,6 +8,7 @@ import { useProject, type WonderComponent } from "@/store/project";
 import { tokensToSandboxCss } from "@/project/tokens";
 import { useMetrics } from "@/store/metrics";
 import { useChat } from "@/store/chat";
+import { useCanvas } from "@/store/canvas";
 import type { Rect } from "@/sandbox/messaging";
 import { setTextAtPath } from "@/ast/text";
 import { getClassNameAtPath, setClassAtPath } from "@/ast/tailwind";
@@ -55,6 +56,10 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
   // component — overlay a pixel-grid loader and disable user input so the
   // user doesn't fight the AI mid-edit.
   const isBusy = useChat((s) => !!s.busyComponents[component.id]);
+  // Play mode disables editor affordances (drag/resize/select/text-edit) and
+  // hands event handling to the component itself so :hover/:focus/:active
+  // CSS states and onClick handlers behave as they would in production.
+  const playMode = useCanvas((s) => s.playMode);
 
   // Token-driven utility CSS that the sandbox iframe needs — Tailwind v3
   // Play CDN inside the iframe has no idea `bg-primary`, `bg-surface`,
@@ -100,6 +105,15 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
     sandboxRef.current?.setProps(propValues ?? {});
   }, [propValues, ready]);
 
+  // Push the play-mode flag to the sandbox whenever it flips — also on ready,
+  // so an iframe that boots while play mode is already on starts in the right
+  // state (otherwise the first render would grab clicks before the toggle
+  // caught up).
+  useEffect(() => {
+    if (!ready) return;
+    sandboxRef.current?.setInteractive(playMode);
+  }, [playMode, ready]);
+
   useEffect(() => {
     if (!ready) return;
     if (selected && selectedElementPath) {
@@ -115,6 +129,7 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
     // Don't let the user drag the frame while the agent is editing it —
     // would fight the AI's tool calls mid-stream.
     if (isBusy) return;
+    if (playMode) return; // no frame moving during play
     e.preventDefault();
     selectComponent(component.id);
     const startX = e.clientX;
@@ -152,8 +167,15 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
         width: size?.w,
         height: size?.h,
       }}
-      onMouseDown={(e) => { if (e.button === 0) selectComponent(component.id); }}
+      onMouseDown={(e) => {
+        // In play mode, mousedowns on the wrapper belong to the component —
+        // selecting it here would also re-show editor chrome we deliberately
+        // hid, and fight whatever the component is doing (click, drag, etc).
+        if (playMode) return;
+        if (e.button === 0) selectComponent(component.id);
+      }}
     >
+      {playMode ? null : (
       <div
         onMouseDown={onMouseDownHeader}
         className={
@@ -168,6 +190,7 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
           {size ? `${Math.round(size.w)} × ${Math.round(size.h)}` : ""}
         </span>
       </div>
+      )}
       <div className="relative h-full w-full">
         <Sandbox
           ref={sandboxRef}
@@ -253,9 +276,9 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
             {err}
           </pre>
         ) : null}
-        {selected && sel ? <SelectionOverlay sel={sel} /> : null}
+        {selected && sel && !playMode ? <SelectionOverlay sel={sel} /> : null}
         {isBusy ? <BusyOverlay /> : null}
-        {dropTarget ? (
+        {dropTarget && !playMode ? (
           <>
             {/* Subtle parent outline so you know which container owns the drop. */}
             <div
@@ -294,7 +317,7 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
           </>
         ) : null}
       </div>
-      {selected && !isBusy && (
+      {selected && !isBusy && !playMode && (
         <ResizeHandles
           component={component}
           size={size}
