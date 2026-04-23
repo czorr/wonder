@@ -1,4 +1,5 @@
 import { AppIcon } from "@/app/icons";
+import { WonderLogo } from "@/app/WonderLogo";
 import { useEffect, useState } from "react";
 import { useProject } from "@/store/project";
 import { useChat } from "@/store/chat";
@@ -40,9 +41,7 @@ export function TitleStrip() {
         data-tauri-drag-region
         className="flex flex-1 items-center justify-center gap-2 text-[13px] text-ink-muted"
       >
-        <div className="flex size-4 items-center justify-center rounded-[4px] bg-accent">
-          <div className="size-1.5 rounded-full bg-white" />
-        </div>
+        <WonderLogo size={16} />
         <span className="font-medium text-ink">Wonder</span>
         <span className="text-ink-faint">·</span>
 

@@ -23,7 +23,10 @@
       "Bash(node -e \"const d=require\\('/Users/czorr/dev/wonder/node_modules/@iconify-json/mingcute/icons.json'\\); const names=Object.keys\\(d.icons\\); for \\(const p of ['rectangle','input','image','pic','photo','inbox','tab','button']\\) { const m=names.filter\\(n=>n.toLowerCase\\(\\).includes\\(p\\)\\).slice\\(0,8\\); console.log\\(p,'=>',m.join\\(' | '\\)\\); }\")",
       "Bash(node -e \"const d=require\\('/Users/czorr/dev/wonder/node_modules/@iconify-json/mingcute/icons.json'\\); const names=new Set\\(Object.keys\\(d.icons\\)\\); for \\(const c of ['edit-2-line','rectangle-line','button-line','pic-line','layout-2-line']\\) console.log\\(\\(names.has\\(c\\)?'✓':'✗'\\), c\\);\")",
       "Bash(node -e \"const m = require\\('/Users/czorr/dev/wonder/node_modules/@iconify-json/mingcute/icons.json'\\); console.log\\('layout-left-line:', !!m.icons['layout-left-line'], '| layout-right-line:', !!m.icons['layout-right-line']\\); console.log\\('layout-left-2-line:', !!m.icons['layout-left-2-line'], '| sidebar-line:', !!m.icons['sidebar-line']\\); const keys = Object.keys\\(m.icons\\).filter\\(k => k.includes\\('layout'\\) || k.includes\\('sidebar'\\)\\); console.log\\(keys.slice\\(0,40\\).join\\('\\\\n'\\)\\);\")",
-      "Bash(pnpm vite *)"
+      "Bash(pnpm vite *)",
+      "Bash(identify /Users/czorr/dev/wonder/assets/wonder_logo.png)",
+      "Bash(sips -g pixelWidth -g pixelHeight /Users/czorr/dev/wonder/assets/wonder_logo.png)",
+      "Bash(pnpm tauri *)"
     ]
   }
 }

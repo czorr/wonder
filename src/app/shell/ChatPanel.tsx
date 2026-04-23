@@ -1,4 +1,5 @@
 import { AppIcon } from "@/app/icons";
+import { WonderLogo } from "@/app/WonderLogo";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@/store/chat";
 import { useProject } from "@/store/project";
@@ -153,9 +154,7 @@ function MessageList({ session }: { session: Session | null }) {
   if (messages.length === 0) {
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-        <div className="grid size-11 place-items-center rounded-full bg-accent-tint text-accent">
-          <AppIcon name="Sparkles" size={18} />
-        </div>
+        <WonderLogo size={44} />
         <div className="flex flex-col gap-1">
           <div className="text-[13px] font-semibold text-ink">Ask anything</div>
           <div className="max-w-[240px] text-[11px] leading-relaxed text-ink-faint">

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AppIcon } from "@/app/icons";
+import { WonderLogo } from "@/app/WonderLogo";
 import {
   actionNewProject,
   actionOpenProject,
@@ -147,9 +148,7 @@ export function ProjectLauncher() {
 function Header() {
   return (
     <div className="flex flex-col items-center gap-3 text-center">
-      <div className="grid size-14 place-items-center rounded-2xl bg-gradient-to-br from-accent to-accent/70 text-white shadow-[0_10px_30px_-10px_rgba(16,185,129,0.5)]">
-        <AppIcon name="Sparkles" size={26} />
-      </div>
+      <WonderLogo size={56} shadow />
       <div className="flex flex-col gap-1">
         <h1 className="text-[26px] font-semibold tracking-tight text-ink">
           Wonder
