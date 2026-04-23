@@ -22,12 +22,12 @@
 import { AppIcon } from "@/app/icons";
 import { useRef, useState } from "react";
 import { useProject } from "@/store/project";
+import { useLayout } from "@/store/layout";
 import {
   defaultTokens,
   type ColorFamily,
   type Tokens,
 } from "@/project/tokens";
-import { ExtractDesignSystemModal } from "./ExtractDesignSystemModal";
 
 // Families that the editor won't let you delete — the store+CSS emitter
 // can survive their absence, but losing them silently would surprise users
@@ -37,7 +37,8 @@ const REQUIRED_FAMILIES = new Set(["primary", "neutral", "surface"]);
 export function DesignSystemPanel() {
   const tokens = useProject((s) => s.tokens);
   const updateTokens = useProject((s) => s.updateTokens);
-  const [extractOpen, setExtractOpen] = useState(false);
+  // Shared modal — see TokensStudio comment. The Shell mounts one instance.
+  const openExtract = useLayout((s) => s.openExtractDesignSystem);
 
   return (
     <div className="flex flex-col">
@@ -51,7 +52,7 @@ export function DesignSystemPanel() {
           to <span className="font-mono">design/tokens.css</span>.
         </p>
         <button
-          onClick={() => setExtractOpen(true)}
+          onClick={openExtract}
           className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-accent/30 bg-accent-tint px-2 py-1.5 text-[11px] font-medium text-accent-ink hover:bg-accent/10"
         >
           <AppIcon name="Sparkles" size={12} />
@@ -59,9 +60,8 @@ export function DesignSystemPanel() {
         </button>
       </div>
 
-      {extractOpen ? (
-        <ExtractDesignSystemModal onClose={() => setExtractOpen(false)} />
-      ) : null}
+      {/* Modal lives at the Shell level so the Assistant menu can open it
+          independently of which panel is rendered. */}
 
       <ColorsSection tokens={tokens} update={updateTokens} />
       <FontsSection tokens={tokens} update={updateTokens} />

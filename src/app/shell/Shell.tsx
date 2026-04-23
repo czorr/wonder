@@ -12,6 +12,8 @@ import { ResizableSidebar } from "@/app/shell/ResizableSidebar";
 import { ProfileModal } from "@/app/shell/ProfileModal";
 import { ProjectLauncher } from "@/app/shell/ProjectLauncher";
 import { TokensStudio } from "@/app/shell/TokensStudio";
+import { ExtractDesignSystemModal } from "@/app/shell/ExtractDesignSystemModal";
+import { useNativeMenu } from "@/app/shell/useNativeMenu";
 import { useProject } from "@/store/project";
 import { useCanvas } from "@/store/canvas";
 import { useChat } from "@/store/chat";
@@ -48,6 +50,13 @@ export function Shell() {
   // button. Sidebars stay mounted either way so file navigation still
   // works while editing tokens.
   const centerView = useLayout((s) => s.centerView);
+  const extractOpen = useLayout((s) => s.extractDesignSystemOpen);
+  const closeExtract = useLayout((s) => s.closeExtractDesignSystem);
+
+  // Wire the native (Tauri) menu bar. No-op in plain-browser dev — safe to
+  // call unconditionally. Must stay at Shell level so we don't install
+  // multiple listeners.
+  useNativeMenu();
 
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
@@ -157,6 +166,7 @@ export function Shell() {
       <StatusBar />
       <PreviewOverlay />
       {profileOpen ? <ProfileModal /> : null}
+      {extractOpen ? <ExtractDesignSystemModal onClose={closeExtract} /> : null}
     </div>
   );
 }

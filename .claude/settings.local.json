@@ -26,7 +26,8 @@
       "Bash(pnpm vite *)",
       "Bash(identify /Users/czorr/dev/wonder/assets/wonder_logo.png)",
       "Bash(sips -g pixelWidth -g pixelHeight /Users/czorr/dev/wonder/assets/wonder_logo.png)",
-      "Bash(pnpm tauri *)"
+      "Bash(pnpm tauri *)",
+      "Bash(cargo check *)"
     ]
   }
 }

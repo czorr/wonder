@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Sandbox, type SandboxHandle } from "@/sandbox/Sandbox";
 import { bundle } from "@/sandbox/bundler";
+import { resolveAssets } from "@/sandbox/assetResolver";
+import { useAssets } from "@/store/assets";
 import { HOT_RELOAD_DEBOUNCE_MS } from "@/constants";
 import { useProject, type WonderComponent } from "@/store/project";
 import { tokensToSandboxCss } from "@/project/tokens";
@@ -70,11 +72,20 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
     sandboxRef.current?.setTokensCss(tokensCss);
   }, [tokensCss, ready]);
 
+  // Re-bundle whenever the component source OR the asset catalogue changes.
+  // Watching `assetsVersion` (a derived stamp from the assets store) means
+  // a just-uploaded image flows through to the live preview without the
+  // user having to touch the source — the pre-bundle asset resolver re-
+  // runs and inlines the new data URL.
+  const assetsVersion = useAssets(
+    (s) => s.order.length + "|" + s.order.join(","),
+  );
   useEffect(() => {
     if (!ready) return;
     const id = window.setTimeout(async () => {
       setErr(null);
-      const res = await bundle(component.source);
+      const resolved = resolveAssets(component.source);
+      const res = await bundle(resolved);
       if (!res.ok) {
         setErr(res.error);
         return;
@@ -82,7 +93,7 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
       sandboxRef.current?.render(res.code, propValues ?? {});
     }, HOT_RELOAD_DEBOUNCE_MS);
     return () => window.clearTimeout(id);
-  }, [component.source, ready]);
+  }, [component.source, ready, assetsVersion]);
 
   useEffect(() => {
     if (!ready) return;

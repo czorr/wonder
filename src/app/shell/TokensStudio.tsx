@@ -41,7 +41,6 @@ import {
   type ColorFamily,
   type Tokens,
 } from "@/project/tokens";
-import { ExtractDesignSystemModal } from "./ExtractDesignSystemModal";
 
 // Roles the emitter relies on — we allow editing but not deletion.
 const REQUIRED_FAMILIES = new Set(["primary", "neutral", "surface"]);
@@ -55,7 +54,10 @@ export function TokensStudio() {
   const tokens = useProject((s) => s.tokens);
   const updateTokens = useProject((s) => s.updateTokens);
   const setCenterView = useLayout((s) => s.setCenterView);
-  const [extractOpen, setExtractOpen] = useState(false);
+  // Modal state lives in the layout store so the native Assistant menu can
+  // open it without caring which panel is currently visible. Shell mounts
+  // the modal — we just flip the flag.
+  const openExtract = useLayout((s) => s.openExtractDesignSystem);
 
   // Live tokens.css preview. Recomputed on every token change — cheap since
   // tokensToCss is pure string assembly and the input is tiny.
@@ -65,7 +67,7 @@ export function TokensStudio() {
     <div className="flex min-h-0 flex-1 flex-col bg-canvas">
       <StudioHeader
         onClose={() => setCenterView("canvas")}
-        onExtract={() => setExtractOpen(true)}
+        onExtract={openExtract}
         onReset={() => updateTokens(defaultTokens())}
       />
 
@@ -83,9 +85,8 @@ export function TokensStudio() {
         <CssPreview css={generatedCss} />
       </div>
 
-      {extractOpen ? (
-        <ExtractDesignSystemModal onClose={() => setExtractOpen(false)} />
-      ) : null}
+      {/* Modal is mounted once at the Shell level (see Shell.tsx) — no
+          local portal here so menu + button share one stack. */}
     </div>
   );
 }

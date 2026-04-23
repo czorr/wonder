@@ -26,3 +26,9 @@ export {
   loadProjectFromPath,
 } from "./actions";
 export { initAutosave, flushAutosave, lastAutosaveError } from "./autosave";
+export {
+  ensureAssetDirs,
+  readAllAssets,
+  writeAsset,
+  deleteAsset,
+} from "./assets";

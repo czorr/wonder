@@ -338,7 +338,9 @@ export function RightPanel() {
   const setSource = useProject((s) => s.setSource);
 
   const [state, setState] = useState<string>("base");
-  const [panel, setPanel] = useState<"design" | "props" | "layers">("design");
+  // Layers tab is deliberately not here — removed for now until the AST-based
+  // tree view can be built properly (needs delete-node + move-node helpers).
+  const [panel, setPanel] = useState<"design" | "props">("design");
   const collapseRight = useLayout((s) => s.toggleRight);
   const propValuesByComp = useProject((s) => s.propValues);
   const setPropValue = useProject((s) => s.setPropValue);
@@ -613,7 +615,6 @@ export function RightPanel() {
         </button>
         <PanelTab icon="PaintBrush" label="Design" active={panel === "design"} onClick={() => setPanel("design")} />
         <PanelTab icon="Code" label="Props" active={panel === "props"} onClick={() => setPanel("props")} />
-        <PanelTab icon="Layers" label="Layers" active={panel === "layers"} onClick={() => setPanel("layers")} />
       </div>
 
       {component ? (

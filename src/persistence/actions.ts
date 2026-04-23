@@ -9,6 +9,8 @@ import {
   folderIsWonderProject,
   basename,
 } from "./fs";
+import { ensureAssetDirs, readAllAssets } from "./assets";
+import { useAssets } from "@/store/assets";
 import { addRecentProject, removeRecentProject } from "./appState";
 import { ProjectFileError } from "./migrate";
 import { PROJECT_FILE_VERSION } from "./types";
@@ -83,6 +85,10 @@ export async function actionNewProject(): Promise<boolean> {
 export async function actionCloseProject(): Promise<boolean> {
   if (!(await confirmDiscardIfDirty())) return false;
   useProject.getState().newProject();
+  // Assets are per-project. Wipe the in-memory catalogue so the next
+  // project load (or the launcher screen in between) doesn't see stale
+  // images from the project we just left.
+  useAssets.getState().clear();
   return true;
 }
 
@@ -157,6 +163,20 @@ export async function loadProjectFromPath(path: string): Promise<boolean> {
     // Restore canvas view from the file (persisted with the project).
     useCanvas.getState().setZoom(loaded.meta.canvas.zoom);
     useCanvas.getState().setPan(loaded.meta.canvas.pan);
+
+    // Assets live outside wonder.json (the folder IS the manifest) so we
+    // scan them separately. A failure here is non-fatal — components still
+    // render, they just get broken image icons until the user re-drops
+    // files in. `ensureAssetDirs` seeds the folder for empty projects so
+    // the panel always has a drop target.
+    try {
+      await ensureAssetDirs(path);
+      const assets = await readAllAssets(path);
+      useAssets.getState().replaceAll(assets);
+    } catch (err) {
+      console.warn("[wonder] asset load failed:", err);
+      useAssets.getState().clear();
+    }
 
     await addRecentProject({ path, name: loaded.meta.name });
 

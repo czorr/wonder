@@ -232,17 +232,6 @@ export function CanvasArea() {
         </div>
       </div>
 
-      {/* Floating status pill */}
-      <div className="pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-full border border-stroke bg-panel px-3 py-1.5 text-[11px] text-ink-muted shadow-sm">
-        <span className="flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-accent" />
-          sandbox ready
-        </span>
-        <span className="text-ink-faint">·</span>
-        <span>{order.length} frames</span>
-        <span className="mx-1 h-3 w-px bg-stroke" />
-        <span className="font-mono text-[10px]">zoom {Math.round(zoom * 100)}%</span>
-      </div>
     </section>
   );
 }

@@ -52,6 +52,11 @@ type LayoutState = {
   rightCollapsed: boolean;
   bottomCollapsed: boolean;
   centerView: CenterView;
+  /** Single source of truth for the "Extract design system" modal. Opened
+   *  from the DesignSystemPanel button, the TokensStudio header button, and
+   *  the native Assistant menu. Kept here (not local state) so the menu
+   *  command can open it regardless of which surface is currently visible. */
+  extractDesignSystemOpen: boolean;
 
   setLeftWidth: (n: number) => void;
   setRightWidth: (n: number) => void;
@@ -63,6 +68,8 @@ type LayoutState = {
   toggleLeft: () => void;
   toggleRight: () => void;
   toggleBottom: () => void;
+  openExtractDesignSystem: () => void;
+  closeExtractDesignSystem: () => void;
   /** Restore sidebars to factory defaults (handy when the user drags a panel
    *  off-screen on a smaller display). */
   resetLayout: () => void;
@@ -81,6 +88,9 @@ export const useLayout = create<LayoutState>()(
       rightCollapsed: false,
       bottomCollapsed: false,
       centerView: "canvas",
+      // Transient — intentionally excluded from `partialize` below so we
+      // never boot into a floating modal.
+      extractDesignSystemOpen: false,
 
       setLeftWidth: (n) =>
         set({ leftWidth: clamp(n, LAYOUT_BOUNDS.left.min, LAYOUT_BOUNDS.left.max) }),
@@ -95,6 +105,8 @@ export const useLayout = create<LayoutState>()(
       toggleLeft: () => set((s) => ({ leftCollapsed: !s.leftCollapsed })),
       toggleRight: () => set((s) => ({ rightCollapsed: !s.rightCollapsed })),
       toggleBottom: () => set((s) => ({ bottomCollapsed: !s.bottomCollapsed })),
+      openExtractDesignSystem: () => set({ extractDesignSystemOpen: true }),
+      closeExtractDesignSystem: () => set({ extractDesignSystemOpen: false }),
       resetLayout: () =>
         set({
           leftWidth: LAYOUT_BOUNDS.left.default,
@@ -106,6 +118,20 @@ export const useLayout = create<LayoutState>()(
           centerView: "canvas",
         }),
     }),
-    { name: "wonder-layout", version: 3 },
+    {
+      name: "wonder-layout",
+      version: 3,
+      // Keep transient UI flags (modal open, etc.) out of persistence so a
+      // hard reload never resurrects a stale overlay.
+      partialize: (s) => ({
+        leftWidth: s.leftWidth,
+        rightWidth: s.rightWidth,
+        bottomHeight: s.bottomHeight,
+        leftCollapsed: s.leftCollapsed,
+        rightCollapsed: s.rightCollapsed,
+        bottomCollapsed: s.bottomCollapsed,
+        centerView: s.centerView,
+      }),
+    },
   ),
 );

@@ -18,6 +18,8 @@ import {
 } from "@/primitives/snippets";
 import { insertChildAtPath } from "@/ast/insert";
 import { ChatPanel } from "@/app/shell/ChatPanel";
+import { AssetsPanel } from "@/app/shell/AssetsPanel";
+import { LibraryPanel } from "@/app/shell/LibraryPanel";
 import { isPrimitiveFolder, PRIMITIVES_FOLDER } from "@/project/primitives";
 
 // ---------------------------------------------------------------------------
@@ -211,6 +213,10 @@ export function LeftSidebar() {
 
       {chatOpen ? (
         <ChatPanel />
+      ) : tab === "library" ? (
+        <LibraryPanel />
+      ) : tab === "assets" ? (
+        <AssetsPanel />
       ) : (
         <FilesPanel
           query={query}
