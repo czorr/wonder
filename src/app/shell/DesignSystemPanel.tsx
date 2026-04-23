@@ -70,7 +70,7 @@ export function DesignSystemPanel() {
       <div className="flex items-center justify-end px-3 py-3">
         <button
           onClick={() => updateTokens(defaultTokens())}
-          className="flex items-center gap-1 rounded-md border border-stroke bg-white px-2 py-1 text-[10.5px] text-ink-muted hover:text-ink hover:border-stroke-strong"
+          className="flex items-center gap-1 rounded-md border border-stroke bg-panel px-2 py-1 text-[10.5px] text-ink-muted hover:text-ink hover:border-stroke-strong"
           title="Reset all tokens to Wonder defaults"
         >
           <AppIcon name="Rotate" size={11} /> Reset to defaults
@@ -371,7 +371,7 @@ function ShadeRow({
           setLocalValue(e.target.value);
           onValueChange(e.target.value);
         }}
-        className="size-6 shrink-0 cursor-pointer rounded border border-stroke bg-white p-0.5"
+        className="size-6 shrink-0 cursor-pointer rounded border border-stroke bg-panel p-0.5"
         title="Pick color"
       />
       <input
@@ -395,7 +395,7 @@ function ShadeRow({
           }
         }}
         className={
-          "h-6 w-[72px] shrink-0 rounded border border-stroke bg-white px-1.5 text-[10.5px] font-mono text-ink outline-none focus:border-accent " +
+          "h-6 w-[72px] shrink-0 rounded border border-stroke bg-panel px-1.5 text-[10.5px] font-mono text-ink outline-none focus:border-accent " +
           (onRename ? "" : "text-ink-faint")
         }
         title={onRename ? "Rename shade" : "DEFAULT shade cannot be renamed"}
@@ -410,7 +410,7 @@ function ShadeRow({
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
         placeholder="#rrggbb"
-        className="h-6 min-w-0 flex-1 rounded border border-stroke bg-white px-1.5 text-[10.5px] font-mono text-ink outline-none focus:border-accent"
+        className="h-6 min-w-0 flex-1 rounded border border-stroke bg-panel px-1.5 text-[10.5px] font-mono text-ink outline-none focus:border-accent"
       />
       <span
         title={cssVarHint}
@@ -554,7 +554,7 @@ function FontRow({
         }}
         spellCheck={false}
         placeholder='e.g. "Inter", ui-sans-serif, system-ui'
-        className="w-full resize-none rounded-md border border-stroke bg-white px-2 py-1 font-mono text-[10.5px] text-ink outline-none focus:border-accent"
+        className="w-full resize-none rounded-md border border-stroke bg-panel px-2 py-1 font-mono text-[10.5px] text-ink outline-none focus:border-accent"
         style={{ fontFamily: value }}
       />
     </div>
@@ -681,7 +681,7 @@ function RadiusRow({
             (e.target as HTMLInputElement).blur();
           }
         }}
-        className="h-6 w-[72px] shrink-0 rounded border border-stroke bg-white px-1.5 text-[10.5px] font-mono text-ink outline-none focus:border-accent"
+        className="h-6 w-[72px] shrink-0 rounded border border-stroke bg-panel px-1.5 text-[10.5px] font-mono text-ink outline-none focus:border-accent"
       />
       <input
         value={localValue}
@@ -693,7 +693,7 @@ function RadiusRow({
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
         placeholder="0.5rem"
-        className="h-6 min-w-0 flex-1 rounded border border-stroke bg-white px-1.5 text-[10.5px] font-mono text-ink outline-none focus:border-accent"
+        className="h-6 min-w-0 flex-1 rounded border border-stroke bg-panel px-1.5 text-[10.5px] font-mono text-ink outline-none focus:border-accent"
       />
       <span className="shrink-0 font-mono text-[9.5px] text-ink-faint max-w-[72px] truncate">
         --radius-{name}

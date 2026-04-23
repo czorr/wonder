@@ -3,6 +3,7 @@ import Editor, { type OnMount, type BeforeMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useProject } from "@/store/project";
 import { LAYOUT_BOUNDS, useLayout } from "@/store/layout";
+import { useTheme } from "@/store/theme";
 
 const MIN_PANEL_HEIGHT = LAYOUT_BOUNDS.bottom.min;
 const MAX_PANEL_HEIGHT_MARGIN = 220; // leave at least this much of the window above the panel
@@ -24,6 +25,11 @@ export function CodePanel() {
 
   const active = activeTab ? components[activeTab] : null;
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  // Keep a monaco handle around so we can retheme live when the app theme
+  // flips — defining a theme is a global Monaco operation, but `setTheme`
+  // has to run on the monaco namespace that was handed to us at mount.
+  const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
+  const theme = useTheme((s) => s.theme);
   // Track the last value we pushed in from outside (not typed by user)
   const externalValueRef = useRef<string>("");
 
@@ -213,7 +219,10 @@ declare module "motion" {
 
   const onMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
+    monacoRef.current = monaco;
 
+    // Light theme — matches the light chrome tokens so the editor reads as
+    // one continuous surface with the panel around it.
     monaco.editor.defineTheme("wonder-light", {
       base: "vs",
       inherit: true,
@@ -235,8 +244,43 @@ declare module "motion" {
         "editorIndentGuide.background": "#f4f4f5",
       },
     });
-    monaco.editor.setTheme("wonder-light");
+    // Dark theme — mirrors the `.dark` override palette in globals.css so
+    // the editor doesn't fight the surrounding panel. Token colors are
+    // shifted toward lighter/brighter shades that read cleanly on the dark
+    // background (pink-400, emerald-300, sky-300) instead of the saturated
+    // light-mode variants which turn muddy against #0d0d10.
+    monaco.editor.defineTheme("wonder-dark", {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "keyword", foreground: "f472b6" },
+        { token: "string", foreground: "6ee7b7" },
+        { token: "type", foreground: "7dd3fc" },
+        { token: "identifier.ts", foreground: "f4f4f5" },
+      ],
+      colors: {
+        "editor.background": "#17171c",
+        "editor.foreground": "#f4f4f5",
+        "editorLineNumber.foreground": "#52525b",
+        "editorLineNumber.activeForeground": "#a1a1aa",
+        "editor.lineHighlightBackground": "#1e1e24",
+        "editor.lineHighlightBorder": "#00000000",
+        "editorCursor.foreground": "#34d399",
+        "editor.selectionBackground": "#064e3b",
+        "editorIndentGuide.background": "#2a2a31",
+      },
+    });
+    monaco.editor.setTheme(theme === "dark" ? "wonder-dark" : "wonder-light");
   };
+
+  // Live retheme — whenever the user flips the app theme we flip Monaco
+  // too. This only runs after `onMount` has populated `monacoRef`, so the
+  // initial paint uses whatever `onMount` set directly.
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) return;
+    monaco.editor.setTheme(theme === "dark" ? "wonder-dark" : "wonder-light");
+  }, [theme]);
 
   // Derive file extension badge from the active tab's filename (TSX / TS / JSX / JS).
   const ext = active?.filename.match(/\.([^.]+)$/)?.[1]?.toUpperCase() ?? "";

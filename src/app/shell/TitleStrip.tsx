@@ -171,7 +171,7 @@ function FileMenu({ onClose }: { onClose: () => void }) {
   return (
     <div
       data-wonder-file-menu
-      className="absolute left-1/2 top-full z-40 mt-1 w-[260px] -translate-x-1/2 rounded-lg border border-stroke bg-white shadow-lg"
+      className="absolute left-1/2 top-full z-40 mt-1 w-[260px] -translate-x-1/2 rounded-lg border border-stroke bg-panel shadow-lg"
       onMouseDown={(e) => e.stopPropagation()}
     >
       <MenuItem

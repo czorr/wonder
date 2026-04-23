@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Tailwind v4 dark-mode variant driven by a `.dark` class on <html>. We don't
+ * follow `prefers-color-scheme` — dark mode is an authoring decision in
+ * Wonder (the user may be designing a dark-mode screen while their OS is in
+ * light), so the toggle lives in the Topbar and is persisted via the theme
+ * store. The Shell syncs that store → the html class. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   /* Wonder app chrome — these are for the editor's own UI. */
   --color-canvas: #f7f8f7;
@@ -56,6 +63,38 @@
   --radius-full: 9999px;
 }
 
+/* -----------------------------------------------------------------
+ * Chrome dark palette.
+ *
+ * When <html> carries `.dark`, we repaint the editor's own UI. Every chrome
+ * utility the app uses (`bg-canvas`, `bg-panel`, `text-ink`, `border-stroke`,
+ * `text-ink-muted`, etc.) is driven by these custom properties — so flipping
+ * the class here cascades through the whole Topbar/sidebars/inspector in one
+ * shot. If a utility doesn't re-theme properly, it's usually because the
+ * callsite used a raw color (`bg-white`, `text-zinc-900`) instead of a token.
+ *
+ * Values mirror the light palette structurally: canvas stays slightly darker
+ * than panel, panel-soft a touch lighter than panel, stroke-strong darker
+ * than stroke — so hierarchy reads the same way in both modes.
+ * ----------------------------------------------------------------- */
+.dark {
+  --color-canvas: #0d0d10;
+  --color-panel: #17171c;
+  --color-panel-soft: #1e1e24;
+  --color-stroke: #2a2a31;
+  --color-stroke-strong: #3a3a43;
+  --color-ink: #f4f4f5;
+  --color-ink-soft: #d4d4d8;
+  --color-ink-muted: #a1a1aa;
+  --color-ink-faint: #71717a;
+  /* Accent stays readable on dark surfaces; soft/tint pulled down to avoid
+   * the usual "light green on light green" washout. */
+  --color-accent: #10b981;
+  --color-accent-soft: #064e3b;
+  --color-accent-tint: #022c22;
+  --color-accent-ink: #34d399;
+}
+
 html,
 body,
 #root {
@@ -90,6 +129,14 @@ body {
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #2a2a31;
+  background-clip: padding-box;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #3a3a43;
+  background-clip: padding-box;
 }
 
 /* Pixel-grid loader — used on the canvas while the agent is editing a

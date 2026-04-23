@@ -9,6 +9,7 @@ import { tokensToSandboxCss } from "@/project/tokens";
 import { useMetrics } from "@/store/metrics";
 import { useChat } from "@/store/chat";
 import { useCanvas } from "@/store/canvas";
+import { useTheme } from "@/store/theme";
 import type { Rect } from "@/sandbox/messaging";
 import { setTextAtPath } from "@/ast/text";
 import { getClassNameAtPath, setClassAtPath } from "@/ast/tailwind";
@@ -60,6 +61,9 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
   // hands event handling to the component itself so :hover/:focus/:active
   // CSS states and onClick handlers behave as they would in production.
   const playMode = useCanvas((s) => s.playMode);
+  // Theme flows into the iframe's <html> so every `dark:*` utility in the
+  // user's component fires in sync with the chrome's dark mode.
+  const theme = useTheme((s) => s.theme);
 
   // Token-driven utility CSS that the sandbox iframe needs — Tailwind v3
   // Play CDN inside the iframe has no idea `bg-primary`, `bg-surface`,
@@ -113,6 +117,12 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
     if (!ready) return;
     sandboxRef.current?.setInteractive(playMode);
   }, [playMode, ready]);
+
+  // Theme sync. Safe to call pre-ready (Sandbox buffers the payload) so a
+  // fresh iframe boots straight into the right mode, no flash of light.
+  useEffect(() => {
+    sandboxRef.current?.setTheme(theme === "dark");
+  }, [theme]);
 
   useEffect(() => {
     if (!ready) return;

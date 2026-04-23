@@ -147,6 +147,7 @@ export const ICON_MAP = {
   // — Status / misc —
   Sparkles: "mingcute:paint-brush-ai-line",
   Sun: "mingcute:sun-line",
+  Moon: "mingcute:moon-line",
   GitBranch: "mingcute:git-branch-line",
   Clock: "mingcute:time-line",
   Key: "mingcute:key-2-line",

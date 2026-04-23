@@ -42,6 +42,7 @@ import { Sandbox, type SandboxHandle } from "@/sandbox/Sandbox";
 import { bundle } from "@/sandbox/bundler";
 import { resolveAssets } from "@/sandbox/assetResolver";
 import { useAssets } from "@/store/assets";
+import { useTheme } from "@/store/theme";
 import { tokensToSandboxCss } from "@/project/tokens";
 import { isPrimitiveFolder } from "@/project/primitives";
 
@@ -113,7 +114,7 @@ export function LibraryPanel() {
               className={
                 "rounded-full px-2 py-0.5 text-[10.5px] font-medium transition " +
                 (active
-                  ? "bg-ink text-white"
+                  ? "bg-ink text-panel"
                   : "text-ink-muted hover:bg-panel-soft hover:text-ink")
               }
             >
@@ -212,6 +213,15 @@ function LibraryTile({
     sandboxRef.current?.setTokensCss(tokensCss);
   }, [ready, tokensCss]);
 
+  // Thumbnails flip with the app theme so the library faithfully reflects
+  // what the user will see on the canvas. Pre-ready-safe via the Sandbox
+  // handle's buffer — a tile that mounts while we're in dark mode boots
+  // straight into its dark palette.
+  const theme = useTheme((s) => s.theme);
+  useEffect(() => {
+    sandboxRef.current?.setTheme(theme === "dark");
+  }, [theme]);
+
   useEffect(() => {
     if (!ready) return;
     let cancelled = false;
@@ -265,7 +275,7 @@ function LibraryTile({
       onDragEnd={onDragEnd}
       onClick={onSelect}
       title={`${component.name} · ${component.folder}`}
-      className="group flex flex-col overflow-hidden rounded-lg border border-stroke bg-white transition hover:border-accent/50 hover:shadow-[0_2px_10px_-4px_rgba(0,0,0,0.08)]"
+      className="group flex flex-col overflow-hidden rounded-lg border border-stroke bg-panel transition hover:border-accent/50 hover:shadow-[0_2px_10px_-4px_rgba(0,0,0,0.08)]"
     >
       <div
         className="relative overflow-hidden bg-panel-soft/60 transition group-hover:bg-panel-soft"

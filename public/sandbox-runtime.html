@@ -4,6 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Wonder sandbox</title>
+    <script>
+      // Must be set BEFORE the Tailwind CDN script runs — the Play CDN reads
+      // this config at boot to decide its dark-mode strategy. `class` means
+      // `dark:*` utilities fire only when an ancestor (here, <html>) carries
+      // the `.dark` class, matching the chrome's own convention. The parent
+      // app toggles it via `sandbox:setTheme`.
+      window.tailwind = { config: { darkMode: "class" } };
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="importmap">
       {
@@ -233,6 +241,15 @@
           INTERACTIVE = !!msg.interactive;
           // Leave any mid-edit text state cleanly when entering play mode.
           if (INTERACTIVE && editingEl) cancelEdit();
+        } else if (msg.type === "sandbox:setTheme") {
+          // Flip the `.dark` class on the iframe's <html> so Tailwind's
+          // configured class-based dark mode activates every `dark:*` rule
+          // in the user's component. We toggle on <html> (not <body>) to
+          // match the chrome's convention and Tailwind's `darkMode: 'class'`
+          // default selector.
+          const root = document.documentElement;
+          if (msg.dark) root.classList.add("dark");
+          else root.classList.remove("dark");
         }
       });
 

@@ -189,7 +189,7 @@ function ActionCard({
         "group flex items-start gap-3 rounded-xl border p-4 text-left transition " +
         (primary
           ? "border-accent/30 bg-accent-tint hover:bg-accent/15 hover:border-accent/50"
-          : "border-stroke bg-white hover:bg-panel-soft hover:border-stroke-strong") +
+          : "border-stroke bg-panel hover:bg-panel-soft hover:border-stroke-strong") +
         (busy ? " cursor-wait opacity-70" : " cursor-pointer")
       }
     >
@@ -198,7 +198,7 @@ function ActionCard({
           "grid size-9 shrink-0 place-items-center rounded-lg transition " +
           (primary
             ? "bg-accent text-white"
-            : "bg-panel-soft text-ink group-hover:bg-white")
+            : "bg-panel-soft text-ink group-hover:bg-panel")
         }
       >
         {busy ? (
@@ -270,7 +270,7 @@ function RecentsList({
           </p>
         </div>
       ) : (
-        <div className="flex max-h-[260px] flex-col overflow-y-auto rounded-xl border border-stroke bg-white">
+        <div className="flex max-h-[260px] flex-col overflow-y-auto rounded-xl border border-stroke bg-panel">
           {recents.map((r, i) => {
             const isBusy = busyKey === `recent:${r.path}`;
             return (
@@ -289,7 +289,7 @@ function RecentsList({
                     "grid size-8 shrink-0 place-items-center rounded-md border transition " +
                     (isBusy
                       ? "border-accent/40 bg-accent-tint text-accent"
-                      : "border-stroke bg-panel-soft text-ink-muted group-hover:bg-white group-hover:text-ink")
+                      : "border-stroke bg-panel-soft text-ink-muted group-hover:bg-panel group-hover:text-ink")
                   }
                 >
                   {isBusy ? (

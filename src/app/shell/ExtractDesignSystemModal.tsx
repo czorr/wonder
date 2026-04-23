@@ -103,7 +103,7 @@ export function ExtractDesignSystemModal({ onClose }: Props) {
       onMouseDown={onClose}
     >
       <div
-        className="flex max-h-[85vh] w-[720px] flex-col overflow-hidden rounded-xl border border-stroke bg-white shadow-2xl"
+        className="flex max-h-[85vh] w-[720px] flex-col overflow-hidden rounded-xl border border-stroke bg-panel shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-stroke px-4 py-3">
@@ -137,13 +137,13 @@ export function ExtractDesignSystemModal({ onClose }: Props) {
           <div className="flex shrink-0 items-center gap-2">
             <button
               onClick={rerunSuggest}
-              className="rounded-md px-2 py-1 text-[10.5px] text-ink-muted hover:bg-white hover:text-ink"
+              className="rounded-md px-2 py-1 text-[10.5px] text-ink-muted hover:bg-panel hover:text-ink"
             >
               Re-suggest
             </button>
             <button
               onClick={skipAll}
-              className="rounded-md px-2 py-1 text-[10.5px] text-ink-muted hover:bg-white hover:text-ink"
+              className="rounded-md px-2 py-1 text-[10.5px] text-ink-muted hover:bg-panel hover:text-ink"
             >
               Skip all
             </button>
@@ -168,7 +168,7 @@ export function ExtractDesignSystemModal({ onClose }: Props) {
             </div>
           ) : (
             <table className="w-full border-collapse text-[11px]">
-              <thead className="sticky top-0 bg-white text-[10px] uppercase tracking-wider text-ink-faint">
+              <thead className="sticky top-0 bg-panel text-[10px] uppercase tracking-wider text-ink-faint">
                 <tr className="border-b border-stroke">
                   <th className="px-4 py-2 text-left font-medium">Color</th>
                   <th className="px-4 py-2 text-left font-medium">Usage</th>
@@ -299,7 +299,7 @@ function ColorRow({
               onChange({ family, shade });
             }
           }}
-          className="w-full rounded-md border border-stroke bg-white px-2 py-1 text-[11px] text-ink outline-none focus:border-accent"
+          className="w-full rounded-md border border-stroke bg-panel px-2 py-1 text-[11px] text-ink outline-none focus:border-accent"
         >
           <option value="__skip__">Skip</option>
           {options.map((opt) => (

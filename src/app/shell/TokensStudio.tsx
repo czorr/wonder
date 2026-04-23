@@ -137,7 +137,7 @@ function StudioHeader({
       <button
         onClick={onReset}
         title="Reset all tokens to Wonder defaults"
-        className="flex items-center gap-1.5 rounded-md border border-stroke bg-white px-2.5 py-1 text-[11px] text-ink-muted hover:text-ink hover:border-stroke-strong"
+        className="flex items-center gap-1.5 rounded-md border border-stroke bg-panel px-2.5 py-1 text-[11px] text-ink-muted hover:text-ink hover:border-stroke-strong"
       >
         <AppIcon name="Rotate" size={11} />
         Reset
@@ -214,7 +214,7 @@ function ColorsSection({
       headerRight={
         <button
           onClick={addFamily}
-          className="flex items-center gap-1 rounded-md border border-stroke bg-white px-2 py-1 text-[11px] text-ink-muted hover:text-ink hover:border-stroke-strong"
+          className="flex items-center gap-1 rounded-md border border-stroke bg-panel px-2 py-1 text-[11px] text-ink-muted hover:text-ink hover:border-stroke-strong"
         >
           <AppIcon name="Plus" size={11} /> Add family
         </button>
@@ -314,7 +314,7 @@ function ColorFamilyCard({
   });
 
   return (
-    <div className="rounded-xl border border-stroke bg-white p-4 shadow-[0_1px_0_0_rgba(0,0,0,0.02)]">
+    <div className="rounded-xl border border-stroke bg-panel p-4 shadow-[0_1px_0_0_rgba(0,0,0,0.02)]">
       <div className="mb-4 flex items-center gap-2">
         <span
           className="size-6 shrink-0 rounded-md border border-stroke"
@@ -475,7 +475,7 @@ function ShadeTile({
         }}
         title={onRename ? "Rename shade" : "DEFAULT shade cannot be renamed"}
         className={
-          "rounded border border-stroke bg-white px-1.5 py-1 font-mono text-[11px] outline-none focus:border-accent " +
+          "rounded border border-stroke bg-panel px-1.5 py-1 font-mono text-[11px] outline-none focus:border-accent " +
           (onRename ? "text-ink" : "text-ink-faint")
         }
       />
@@ -490,7 +490,7 @@ function ShadeTile({
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
         placeholder="#rrggbb"
-        className="rounded border border-stroke bg-white px-1.5 py-1 font-mono text-[11px] text-ink outline-none focus:border-accent"
+        className="rounded border border-stroke bg-panel px-1.5 py-1 font-mono text-[11px] text-ink outline-none focus:border-accent"
       />
 
       <div className="flex flex-col gap-0.5 pt-0.5">
@@ -544,7 +544,7 @@ function FontsSection({
       headerRight={
         <button
           onClick={toggleDisplay}
-          className="flex items-center gap-1 rounded-md border border-stroke bg-white px-2 py-1 text-[11px] text-ink-muted hover:text-ink hover:border-stroke-strong"
+          className="flex items-center gap-1 rounded-md border border-stroke bg-panel px-2 py-1 text-[11px] text-ink-muted hover:text-ink hover:border-stroke-strong"
         >
           {tokens.fonts.display !== undefined ? (
             <>
@@ -622,7 +622,7 @@ function FontCard({
   }
 
   return (
-    <div className="rounded-xl border border-stroke bg-white p-4">
+    <div className="rounded-xl border border-stroke bg-panel p-4">
       <div className="flex items-center gap-2">
         <span className="text-[13px] font-semibold text-ink">{label}</span>
         <span className="font-mono text-[10.5px] text-ink-faint">{cssVar}</span>
@@ -648,7 +648,7 @@ function FontCard({
         }}
         spellCheck={false}
         placeholder='e.g. "Inter", ui-sans-serif, system-ui'
-        className="mt-3 w-full resize-none rounded-md border border-stroke bg-white px-2.5 py-2 font-mono text-[11px] text-ink outline-none focus:border-accent"
+        className="mt-3 w-full resize-none rounded-md border border-stroke bg-panel px-2.5 py-2 font-mono text-[11px] text-ink outline-none focus:border-accent"
       />
     </div>
   );
@@ -687,7 +687,7 @@ function RadiiSection({
       headerRight={
         <button
           onClick={addRadius}
-          className="flex items-center gap-1 rounded-md border border-stroke bg-white px-2 py-1 text-[11px] text-ink-muted hover:text-ink hover:border-stroke-strong"
+          className="flex items-center gap-1 rounded-md border border-stroke bg-panel px-2 py-1 text-[11px] text-ink-muted hover:text-ink hover:border-stroke-strong"
         >
           <AppIcon name="Plus" size={11} /> Add radius
         </button>
@@ -753,7 +753,7 @@ function RadiusTile({
   }
 
   return (
-    <div className="group relative flex flex-col gap-2 rounded-lg border border-stroke bg-white p-3">
+    <div className="group relative flex flex-col gap-2 rounded-lg border border-stroke bg-panel p-3">
       {/* Preview — a large square with the declared radius applied. Accent tint
           fill so the shape reads even on white page backgrounds. */}
       <div
@@ -784,7 +784,7 @@ function RadiusTile({
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className="h-7 w-[68px] shrink-0 rounded border border-stroke bg-white px-1.5 font-mono text-[11px] text-ink outline-none focus:border-accent"
+          className="h-7 w-[68px] shrink-0 rounded border border-stroke bg-panel px-1.5 font-mono text-[11px] text-ink outline-none focus:border-accent"
         />
         <input
           value={localValue}
@@ -796,7 +796,7 @@ function RadiusTile({
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           }}
           placeholder="0.5rem"
-          className="h-7 min-w-0 flex-1 rounded border border-stroke bg-white px-1.5 font-mono text-[11px] text-ink outline-none focus:border-accent"
+          className="h-7 min-w-0 flex-1 rounded border border-stroke bg-panel px-1.5 font-mono text-[11px] text-ink outline-none focus:border-accent"
         />
         <button
           onClick={onDelete}
@@ -833,7 +833,7 @@ function CssPreview({ css }: { css: string }) {
   };
 
   return (
-    <div className="flex w-[40%] min-w-[360px] max-w-[560px] flex-col border-l border-stroke bg-white">
+    <div className="flex w-[40%] min-w-[360px] max-w-[560px] flex-col border-l border-stroke bg-panel">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-stroke px-3">
         <AppIcon name="FileCode" size={12} className="text-ink-faint" />
         <span className="font-mono text-[11px] text-ink">

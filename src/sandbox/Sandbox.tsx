@@ -20,6 +20,8 @@ export type SandboxHandle = {
   setTokensCss: (css: string) => void;
   /** Toggle play mode — see SandboxOutgoing `sandbox:setInteractive`. */
   setInteractive: (interactive: boolean) => void;
+  /** Toggle dark mode — see SandboxOutgoing `sandbox:setTheme`. */
+  setTheme: (dark: boolean) => void;
 };
 
 type SandboxProps = {
@@ -59,6 +61,10 @@ export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
   // classes (bg-primary, etc). Single slot is fine: tokens are idempotent,
   // and only the latest payload matters at boot.
   const pendingTokensRef = useRef<string | null>(null);
+  // Same pre-ready buffering for theme — we want the iframe to boot already
+  // in the right light/dark mode so there's no momentary flash of the wrong
+  // palette on first render.
+  const pendingThemeRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     function onMessage(e: MessageEvent) {
@@ -80,6 +86,18 @@ export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
               "*",
             );
             pendingTokensRef.current = null;
+          }
+          // Flush theme before render too — otherwise a dark-mode component
+          // would paint in light for one frame and flip.
+          if (pendingThemeRef.current != null) {
+            iframeRef.current?.contentWindow?.postMessage(
+              {
+                type: "sandbox:setTheme",
+                dark: pendingThemeRef.current,
+              } satisfies SandboxOutgoing,
+              "*",
+            );
+            pendingThemeRef.current = null;
           }
           if (pendingRef.current) {
             iframeRef.current?.contentWindow?.postMessage(
@@ -173,6 +191,14 @@ export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
           { type: "sandbox:setInteractive", interactive } satisfies SandboxOutgoing,
           "*",
         );
+      },
+      setTheme(dark) {
+        const msg: SandboxOutgoing = { type: "sandbox:setTheme", dark };
+        if (ready && iframeRef.current?.contentWindow) {
+          iframeRef.current.contentWindow.postMessage(msg, "*");
+        } else {
+          pendingThemeRef.current = dark;
+        }
       },
     }),
     [ready],

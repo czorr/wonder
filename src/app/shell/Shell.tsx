@@ -18,6 +18,7 @@ import { useProject } from "@/store/project";
 import { useCanvas } from "@/store/canvas";
 import { useChat } from "@/store/chat";
 import { useLayout } from "@/store/layout";
+import { useTheme } from "@/store/theme";
 import { normalizePastedComponent } from "@/ast/paste";
 import {
   loadAppState,
@@ -57,6 +58,16 @@ export function Shell() {
   // call unconditionally. Must stay at Shell level so we don't install
   // multiple listeners.
   useNativeMenu();
+
+  // Keep <html> in sync with the theme store so the chrome's `dark:` rules
+  // flip the whole app. Done once, at the root — individual components never
+  // touch `document.documentElement` themselves.
+  const theme = useTheme((s) => s.theme);
+  useEffect(() => {
+    const cls = document.documentElement.classList;
+    if (theme === "dark") cls.add("dark");
+    else cls.remove("dark");
+  }, [theme]);
 
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {

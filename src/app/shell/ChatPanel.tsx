@@ -91,7 +91,7 @@ function SessionDropdown() {
         <AppIcon name="ChevronDown" size={10} className="text-ink-faint" />
       </button>
       {open ? (
-        <div className="absolute left-0 top-full z-30 mt-1 max-h-[280px] w-[260px] overflow-y-auto rounded-xl border border-stroke bg-white py-1 shadow-lg">
+        <div className="absolute left-0 top-full z-30 mt-1 max-h-[280px] w-[260px] overflow-y-auto rounded-xl border border-stroke bg-panel py-1 shadow-lg">
           {sessions.length === 0 ? (
             <div className="px-3 py-2 text-[11px] text-ink-faint">
               Start typing below to create your first chat.
@@ -280,7 +280,7 @@ function ChatInput({ session }: { session: Session | null }) {
     <div className="shrink-0 px-3 pb-3 pt-1">
       <div
         className={
-          "flex flex-col gap-2 rounded-2xl border bg-white px-3 pb-2 pt-2.5 transition-[border-color,box-shadow] " +
+          "flex flex-col gap-2 rounded-2xl border bg-panel px-3 pb-2 pt-2.5 transition-[border-color,box-shadow] " +
           (focused
             ? "border-accent/40 shadow-[0_0_0_3px_rgba(16,185,129,0.08)]"
             : "border-stroke")
@@ -344,7 +344,7 @@ function ChatInput({ session }: { session: Session | null }) {
             <button
               onClick={stop}
               title="Stop"
-              className="grid size-8 place-items-center rounded-full bg-ink text-white transition hover:brightness-110"
+              className="grid size-8 place-items-center rounded-full bg-ink text-panel transition hover:brightness-110"
             >
               <AppIcon name="Square" size={11} />
             </button>
@@ -414,13 +414,13 @@ function AtPicker() {
     <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="grid size-7 place-items-center rounded-full border border-stroke bg-white text-ink-soft transition hover:bg-panel-soft"
+        className="grid size-7 place-items-center rounded-full border border-stroke bg-panel text-ink-soft transition hover:bg-panel-soft"
         title="Tag a component for the agent to scope this message to"
       >
         <AppIcon name="AtSign" size={11} />
       </button>
       {open ? (
-        <div className="absolute bottom-full left-0 z-30 mb-1.5 w-[240px] overflow-hidden rounded-xl border border-stroke bg-white shadow-lg">
+        <div className="absolute bottom-full left-0 z-30 mb-1.5 w-[240px] overflow-hidden rounded-xl border border-stroke bg-panel shadow-lg">
           <div className="border-b border-stroke p-1.5">
             <input
               autoFocus
@@ -504,7 +504,7 @@ function ModelChip() {
     <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 rounded-full border border-stroke bg-white px-2 py-1 text-[11px] font-medium text-ink-soft transition hover:bg-panel-soft"
+        className="flex items-center gap-1.5 rounded-full border border-stroke bg-panel px-2 py-1 text-[11px] font-medium text-ink-soft transition hover:bg-panel-soft"
         title={current.description}
       >
         <AppIcon name={PROVIDER_ICON[current.provider]} size={12} className="text-ink" />
@@ -512,7 +512,7 @@ function ModelChip() {
         <AppIcon name="ChevronDown" size={9} className="text-ink-faint" />
       </button>
       {open ? (
-        <div className="absolute bottom-full left-0 z-30 mb-1.5 w-[260px] rounded-xl border border-stroke bg-white py-1 shadow-lg">
+        <div className="absolute bottom-full left-0 z-30 mb-1.5 w-[260px] rounded-xl border border-stroke bg-panel py-1 shadow-lg">
           {models.map((m) => (
             <button
               key={m.id}

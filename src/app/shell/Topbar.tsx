@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useCanvas } from "@/store/canvas";
 import { useProject } from "@/store/project";
 import { useChat } from "@/store/chat";
+import { useTheme } from "@/store/theme";
 // `useLayout` is imported lazily inside the keydown handler via getState() so
 // the Topbar doesn't re-render when layout changes — it doesn't show any
 // layout state directly (that UI moved into the sidebar headers themselves).
@@ -27,6 +28,8 @@ export function Topbar() {
   const setTool = useCanvas((s) => s.setTool);
   const playMode = useCanvas((s) => s.playMode);
   const togglePlayMode = useCanvas((s) => s.togglePlayMode);
+  const theme = useTheme((s) => s.theme);
+  const toggleTheme = useTheme((s) => s.toggleTheme);
 
   const components = useProject((s) => s.components);
   const order = useProject((s) => s.order);
@@ -209,7 +212,7 @@ export function Topbar() {
                 key={bp}
                 className={
                   "rounded-md px-2 py-1 text-[11px] font-medium transition " +
-                  (bp === "md" ? "bg-ink text-white" : "text-ink-muted hover:text-ink")
+                  (bp === "md" ? "bg-ink text-panel" : "text-ink-muted hover:text-ink")
                 }
               >
                 {bp}
@@ -217,10 +220,21 @@ export function Topbar() {
             ))}
           </div>
         </div>
-        <button className="flex items-center gap-1.5 rounded-lg border border-stroke bg-panel px-2.5 py-1.5 text-[11px] font-medium text-ink-soft">
-          <AppIcon name="Sun" size={13} className="text-ink-muted" />
-          Default
-          <AppIcon name="ChevronDown" size={12} className="text-ink-faint" />
+        {/* Theme toggle. Flips `.dark` on <html> (repaints chrome), pushes
+            the same flag into every preview iframe (repaints components via
+            Tailwind's class-based dark mode), and tells the RightPanel to
+            write `dark:` variants for every class edit while active. */}
+        <button
+          onClick={toggleTheme}
+          title={theme === "dark" ? "Switch to light" : "Switch to dark"}
+          className="flex items-center gap-1.5 rounded-lg border border-stroke bg-panel px-2.5 py-1.5 text-[11px] font-medium text-ink-soft hover:border-stroke-strong hover:text-ink transition"
+        >
+          <AppIcon
+            name={theme === "dark" ? "Moon" : "Sun"}
+            size={13}
+            className="text-ink-muted"
+          />
+          {theme === "dark" ? "Dark" : "Light"}
         </button>
       </div>
 

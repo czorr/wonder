@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useProject } from "@/store/project";
 import { useMetrics } from "@/store/metrics";
+import { useTheme } from "@/store/theme";
 import { DesignSystemPanel } from "./DesignSystemPanel";
 import {
   addClassesAtPath,
@@ -156,37 +157,74 @@ const STATE_TABS = ["base", "hover", "focus", "active"] as const;
 type StateVariant = (typeof STATE_TABS)[number];
 const VARIANT_PREFIXES = new Set<string>(STATE_TABS.filter((s) => s !== "base"));
 
-/** Extract the leading `hover:` / `focus:` / `active:` prefix, or `null`
- *  if the class has no known state prefix. We only peel ONE prefix — nested
- *  variants like `hover:focus:bg-red` aren't supported yet, but if they
- *  showed up the outer variant still reads correctly. */
-function variantOf(cls: string): StateVariant | "base" {
-  const idx = cls.indexOf(":");
-  if (idx < 0) return "base";
-  const p = cls.slice(0, idx);
-  return VARIANT_PREFIXES.has(p) ? (p as StateVariant) : "base";
+/**
+ * A class in Wonder can live in one of up to four "slots":
+ *
+ *     bare:              bg-red-500
+ *     state-only:        hover:bg-red-500
+ *     dark-only:         dark:bg-red-500
+ *     dark + state:      dark:hover:bg-red-500
+ *
+ * `VariantKey` packs both dimensions into one object so every reader/writer
+ * in the inspector can speak the same language. `state` comes from the
+ * state-tab selector, `dark` comes from the global theme store — flipping
+ * either moves every read/write to a different slot without rewriting any
+ * of the downstream logic.
+ */
+type VariantKey = { dark: boolean; state: StateVariant };
+
+/** Parse the leading `dark:` / state: / `dark:state:` / `state:dark:`
+ *  prefixes off a class. Tailwind is permissive about order, so we peel up
+ *  to TWO prefixes rather than assuming a canonical sequence — components
+ *  hand-edited in code won't always follow the convention we emit. */
+function parseVariant(cls: string): { key: VariantKey; bare: string } {
+  let dark = false;
+  let state: StateVariant = "base";
+  let rest = cls;
+  for (let i = 0; i < 2; i++) {
+    const idx = rest.indexOf(":");
+    if (idx < 0) break;
+    const p = rest.slice(0, idx);
+    if (p === "dark") {
+      dark = true;
+      rest = rest.slice(idx + 1);
+    } else if (VARIANT_PREFIXES.has(p)) {
+      state = p as StateVariant;
+      rest = rest.slice(idx + 1);
+    } else {
+      break;
+    }
+  }
+  return { key: { dark, state }, bare: rest };
 }
 
-/** Strip any `hover:`/`focus:`/`active:` prefix. Safe to call on already
- *  unprefixed classes — they come back unchanged. */
+/** Which slot does this class live in? */
+function variantOf(cls: string): VariantKey {
+  return parseVariant(cls).key;
+}
+
+/** Strip every known prefix (dark + state). Safe on bare classes. */
 function stripVariant(cls: string): string {
-  const v = variantOf(cls);
-  return v === "base" ? cls : cls.slice(v.length + 1);
+  return parseVariant(cls).bare;
 }
 
-/** Attach the current variant's prefix to a bare Tailwind token. Base is
- *  the identity function so existing callers that don't care about
- *  variants still round-trip. */
-function withVariant(state: StateVariant, cls: string): string {
-  return state === "base" ? cls : `${state}:${cls}`;
+/** Compose the canonical `dark:state:class` form for a write. We always emit
+ *  `dark:` OUTER and the state inner — Tailwind accepts either order when
+ *  reading but we pick one for consistency so diffs don't flicker. */
+function withVariant(key: VariantKey, cls: string): string {
+  let out = cls;
+  if (key.state !== "base") out = `${key.state}:${out}`;
+  if (key.dark) out = `dark:${out}`;
+  return out;
 }
 
-/** True when `cls` belongs to the given variant slot. Used both to
- *  filter the class list the inspector shows AND to scope the "clear
- *  before write" passes in color / gap / corner writers so a hover edit
- *  never stomps on the base value. */
-function clsBelongsTo(cls: string, state: StateVariant): boolean {
-  return variantOf(cls) === state;
+/** True when `cls` belongs to the given slot. Drives both the filtered
+ *  class list the inspector shows AND the scoped "clear before write"
+ *  passes in color / gap / corner writers so a dark-hover edit never
+ *  stomps on the base, light-hover, or dark-base values. */
+function clsBelongsTo(cls: string, key: VariantKey): boolean {
+  const v = parseVariant(cls).key;
+  return v.dark === key.dark && v.state === key.state;
 }
 
 const DISPLAY_OPTIONS: { value: string; icon: AppIconName; label: string }[] = [
@@ -391,6 +429,18 @@ export function RightPanel() {
   const setSource = useProject((s) => s.setSource);
 
   const [state, setState] = useState<StateVariant>("base");
+  // Theme is the *other* dimension of the variant key. Flipping dark mode
+  // in the Topbar instantly redirects every read/write in this panel to the
+  // `dark:` slot so edits made while in dark mode only affect dark styles —
+  // exactly like Webflow's dark-mode editor. When we're in light mode the
+  // `dark` dimension is `false`, so the panel edits the canonical light
+  // classes and dark overrides stay hidden from view.
+  const theme = useTheme((s) => s.theme);
+  const isDark = theme === "dark";
+  const currentKey: VariantKey = useMemo(
+    () => ({ dark: isDark, state }),
+    [isDark, state],
+  );
   // Layers tab is deliberately not here — removed for now until the AST-based
   // tree view can be built properly (needs delete-node + move-node helpers).
   const [panel, setPanel] = useState<"design" | "props">("design");
@@ -415,7 +465,7 @@ export function RightPanel() {
   // variant prefix stripped — so the rest of the panel can read/write in the
   // user's mental model ("the hover background is red-600") without having
   // to think about prefixes. All mutation helpers below re-apply the prefix
-  // via `withVariant(state, ...)` before writing.
+  // via `withVariant(currentKey, ...)` before writing.
   const rawClasses = useMemo(() => {
     if (!component) return [];
     try {
@@ -428,21 +478,24 @@ export function RightPanel() {
   const classes = useMemo(
     () =>
       rawClasses
-        .filter((c) => clsBelongsTo(c, state))
+        .filter((c) => clsBelongsTo(c, currentKey))
         .map(stripVariant),
-    [rawClasses, state],
+    [rawClasses, currentKey],
   );
 
-  // How many overrides each variant has — drives the count pips next to
-  // each state tab so the user can see at a glance which states are touched.
+  // How many overrides each state has *in the current dark/light dimension*.
+  // Scoped to the active dark slot because mixing light+dark counts would
+  // confuse the pip — a tab saying "3 edits" when two of them only live in
+  // the other theme would mislead the user about what they'll actually see.
   const variantCounts = useMemo(() => {
     const counts: Record<StateVariant, number> = { base: 0, hover: 0, focus: 0, active: 0 };
     for (const c of rawClasses) {
       const v = variantOf(c);
-      counts[v] = (counts[v] ?? 0) + 1;
+      if (v.dark !== isDark) continue;
+      counts[v.state] = (counts[v.state] ?? 0) + 1;
     }
     return counts;
-  }, [rawClasses]);
+  }, [rawClasses, isDark]);
 
   const find = (pred: (c: string) => boolean) => classes.find(pred);
 
@@ -550,8 +603,8 @@ export function RightPanel() {
     if (!component) return;
     try {
       const base = baselineRef.current ?? component.source;
-      const oldRaw = oldClass ? withVariant(state, oldClass) : null;
-      const nextRaw = next ? withVariant(state, next) : "";
+      const oldRaw = oldClass ? withVariant(currentKey, oldClass) : null;
+      const nextRaw = next ? withVariant(currentKey, next) : "";
       const updated = setClassAtPath(base, path, oldRaw ?? nextRaw, nextRaw);
       setSource(component.id, updated);
     } catch (e) {
@@ -583,7 +636,7 @@ export function RightPanel() {
       // editing the hover state — so tabbing back to base still shows the
       // original base color.
       const cleared = removeClassesAtPath(base, path, (c) => {
-        if (!clsBelongsTo(c, state)) return false;
+        if (!clsBelongsTo(c, currentKey)) return false;
         const bare = stripVariant(c);
         return (
           bare.startsWith(`${prefix}-`) &&
@@ -592,7 +645,7 @@ export function RightPanel() {
       });
       const updated = nextName
         ? addClassesAtPath(cleared, path, [
-            withVariant(state, `${prefix}-${nextName}`),
+            withVariant(currentKey, `${prefix}-${nextName}`),
           ])
         : cleared;
       setSource(component.id, updated);
@@ -629,15 +682,15 @@ export function RightPanel() {
       // Scoped clear — only gap-* classes that belong to the current
       // variant are stripped. Anything on other states survives.
       src = removeClassesAtPath(src, path, (c) => {
-        if (!clsBelongsTo(c, state)) return false;
+        if (!clsBelongsTo(c, currentKey)) return false;
         return /^gap(?:-[xy])?-/.test(stripVariant(c));
       });
       const toAdd: string[] =
         nextX === nextY
-          ? [withVariant(state, `gap-${nextX}`)]
+          ? [withVariant(currentKey, `gap-${nextX}`)]
           : [
-              withVariant(state, `gap-x-${nextX}`),
-              withVariant(state, `gap-y-${nextY}`),
+              withVariant(currentKey, `gap-x-${nextX}`),
+              withVariant(currentKey, `gap-y-${nextY}`),
             ];
       src = addClassesAtPath(src, path, toAdd);
       setSource(component.id, src);
@@ -664,7 +717,7 @@ export function RightPanel() {
       // Clear every rounded-* class that belongs to the current variant.
       // Other variants' radii are preserved.
       src = removeClassesAtPath(src, path, (c) => {
-        if (!clsBelongsTo(c, state)) return false;
+        if (!clsBelongsTo(c, currentKey)) return false;
         return /^rounded(?:-(?:tl|tr|br|bl|t|b|l|r))?(?:-(?:none|sm|md|lg|xl|2xl|3xl|full))?$/.test(
           stripVariant(c),
         );
@@ -675,13 +728,13 @@ export function RightPanel() {
       const toAdd: string[] = [];
       if (allEqual) {
         const cls = next.tl === "" ? "rounded" : `rounded-${next.tl}`;
-        toAdd.push(withVariant(state, cls));
+        toAdd.push(withVariant(currentKey, cls));
       } else {
         for (const c of RADIUS_CORNERS) {
           const s = next[c.key];
           if (s === "none") continue; // `rounded-X-none` is rarely needed; omit → inherits 0
           const cls = s === "" ? c.tailwindBase : `${c.tailwindBase}-${s}`;
-          toAdd.push(withVariant(state, cls));
+          toAdd.push(withVariant(currentKey, cls));
         }
       }
       if (toAdd.length) src = addClassesAtPath(src, path, toAdd);
@@ -717,7 +770,7 @@ export function RightPanel() {
       ) : null}
 
       {component ? (
-      <div className="border-b border-stroke px-3 py-1.5">
+      <div className="flex items-center justify-between gap-2 border-b border-stroke px-3 py-1.5">
         {/* Segmented state selector. Same visual language as the breakpoint
             picker in the Topbar — thin rounded container, ink fill for the
             active segment, muted text elsewhere. Overrides on a non-active
@@ -736,7 +789,7 @@ export function RightPanel() {
                 className={
                   "relative flex items-center gap-1 rounded-[5px] px-2 py-0.5 text-[10.5px] font-medium transition " +
                   (active
-                    ? "bg-ink text-white shadow-sm"
+                    ? "bg-ink text-panel shadow-sm"
                     : "text-ink-muted hover:text-ink")
                 }
               >
@@ -748,6 +801,20 @@ export function RightPanel() {
             );
           })}
         </div>
+        {/* Dark-mode chip — makes it impossible to miss that edits you're
+            about to make land in the `dark:` slot. The chip itself is a
+            read-only indicator; the user flips dark mode from the Topbar
+            toggle (same control that repaints the app chrome), which keeps
+            "editing dark" and "viewing dark" from drifting apart. */}
+        {isDark ? (
+          <span
+            className="inline-flex items-center gap-1 rounded-full border border-stroke bg-panel-soft/60 px-2 py-0.5 font-mono text-[9.5px] text-ink-muted"
+            title="Edits are being written with the dark: prefix. Toggle the theme in the Topbar to edit light styles."
+          >
+            <AppIcon name="Moon" size={9} className="text-ink-muted" />
+            dark:
+          </span>
+        ) : null}
       </div>
       ) : null}
 
@@ -774,7 +841,7 @@ export function RightPanel() {
                 // `currentX` values are bare (variant-stripped); re-prefix
                 // before deleting so we only clear the current state's entries.
                 for (const cls of toRemove) {
-                  try { src = setClassAtPath(src, path, withVariant(state, cls), ""); } catch {}
+                  try { src = setClassAtPath(src, path, withVariant(currentKey, cls), ""); } catch {}
                 }
                 setSource(component.id, src);
               }}
@@ -873,7 +940,7 @@ export function RightPanel() {
                 if (toRemove.length === 0) return;
                 let src = component.source;
                 for (const cls of toRemove) {
-                  try { src = setClassAtPath(src, path, withVariant(state, cls), ""); } catch {}
+                  try { src = setClassAtPath(src, path, withVariant(currentKey, cls), ""); } catch {}
                 }
                 setSource(component.id, src);
               }}
@@ -967,7 +1034,7 @@ export function RightPanel() {
                     className={
                       "flex flex-1 items-center justify-center h-6 rounded-[4px] transition " +
                       (active
-                        ? "bg-white shadow-sm text-ink"
+                        ? "bg-panel shadow-sm text-ink"
                         : "text-ink-muted hover:text-ink")
                     }
                   >
@@ -1141,7 +1208,7 @@ export function RightPanel() {
             />
             {/* Visual hint: a thin sample line with the chosen style so the
                 user sees dashed vs dotted vs double without committing. */}
-            <div className="flex h-7 items-center rounded-md border border-stroke bg-white px-2">
+            <div className="flex h-7 items-center rounded-md border border-stroke bg-panel px-2">
               <span
                 className="h-0 w-full"
                 style={{
@@ -1269,7 +1336,7 @@ function IconToggleGroup<T extends { value: string; icon: AppIconName; label?: s
               className={
                 "flex flex-1 items-center justify-center h-6 rounded-[4px] transition " +
                 (active
-                  ? "bg-white shadow-sm text-ink"
+                  ? "bg-panel shadow-sm text-ink"
                   : "text-ink-muted hover:text-ink")
               }
             >
@@ -1409,7 +1476,7 @@ function SideInput({
     <div
       className={
         "group relative flex items-center justify-center rounded border border-transparent " +
-        (scrubbing ? "border-accent bg-white " : "hover:border-stroke ")
+        (scrubbing ? "border-accent bg-panel" : "hover:border-stroke ")
       }
     >
       <button
@@ -1551,7 +1618,7 @@ function InputBox({
   return (
     <div
       className={
-        "wnd-field flex h-7 items-center gap-1 rounded-md border border-stroke bg-white px-2 " +
+        "wnd-field flex h-7 items-center gap-1 rounded-md border border-stroke bg-panel px-2 " +
         (full ? "col-span-2 " : "") +
         (readOnly ? "opacity-100" : "focus-within:border-accent")
       }
@@ -1626,7 +1693,7 @@ function SelectBox({
           if (!open) onOpen?.();
           setOpen((o) => !o);
         }}
-        className="flex h-7 w-full items-center gap-1 wnd-field rounded-md border border-stroke bg-white px-2 hover:border-stroke-strong"
+        className="flex h-7 w-full items-center gap-1 wnd-field rounded-md border border-stroke bg-panel px-2 hover:border-stroke-strong"
       >
         <span className="min-w-0 flex-1 truncate text-left text-[11px] text-ink">
           {hint}
@@ -1639,7 +1706,7 @@ function SelectBox({
       {open ? (
         <div
           onMouseLeave={() => onHover?.(value)}
-          className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 rounded-md border border-stroke bg-white p-1 shadow-lg"
+          className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 rounded-md border border-stroke bg-panel p-1 shadow-lg"
         >
           <div className="flex items-center gap-1 rounded border border-stroke bg-panel-soft px-1.5 py-1">
             <AppIcon name="Search" size={11} className="text-ink-faint" />
@@ -1712,7 +1779,7 @@ function RadiusPreview({
       }
     : { borderRadius: cap(unifiedPx) };
   return (
-    <div className="flex h-7 items-center justify-center rounded-md border border-stroke bg-white px-2">
+    <div className="flex h-7 items-center justify-center rounded-md border border-stroke bg-panel px-2">
       <div
         className="h-5 w-8 border border-ink-faint/70 bg-accent-tint"
         style={style}
@@ -1877,7 +1944,7 @@ function ColorDropdown({
           if (!open) onOpen?.();
           setOpen((o) => !o);
         }}
-        className="flex h-7 w-full items-center gap-2 rounded-md border border-stroke bg-white px-1.5 hover:border-stroke-strong"
+        className="flex h-7 w-full items-center gap-2 rounded-md border border-stroke bg-panel px-1.5 hover:border-stroke-strong"
       >
         {color ? (
           <span
@@ -1910,7 +1977,7 @@ function ColorDropdown({
       {open ? (
         <div
           onMouseLeave={() => onHover?.(color?.name ?? "")}
-          className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 rounded-md border border-stroke bg-white p-1 shadow-lg"
+          className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 rounded-md border border-stroke bg-panel p-1 shadow-lg"
         >
           <div className="flex items-center gap-1 rounded border border-stroke bg-panel-soft px-1.5 py-1">
             <AppIcon name="Search" size={11} className="text-ink-faint" />
@@ -1973,7 +2040,7 @@ function ColorDropdown({
 
 function ColorGroupHeader({ label }: { label: string }) {
   return (
-    <div className="sticky top-0 z-10 bg-white px-1.5 pb-0.5 pt-1.5 text-[10px] font-normal text-ink-faint">
+    <div className="sticky top-0 z-10 bg-panel px-1.5 pb-0.5 pt-1.5 text-[10px] font-normal text-ink-faint">
       {label}
     </div>
   );
@@ -2094,7 +2161,7 @@ function PropsPanel({
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="prop name"
-            className="min-w-0 flex-1 rounded-md border border-stroke bg-white px-2 py-1 text-[11px] text-ink outline-none focus:border-accent"
+            className="min-w-0 flex-1 rounded-md border border-stroke bg-panel px-2 py-1 text-[11px] text-ink outline-none focus:border-accent"
           />
           <button
             onClick={bind}

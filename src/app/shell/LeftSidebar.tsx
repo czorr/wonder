@@ -350,7 +350,7 @@ function FilesPanel({
               <AppIcon name="X" size={10} />
             </button>
           ) : (
-            <kbd className="rounded bg-white px-1 py-0.5 text-[9px] font-medium text-ink-faint border border-stroke">
+            <kbd className="rounded bg-panel px-1 py-0.5 text-[9px] font-medium text-ink-faint border border-stroke">
               ⌘K
             </kbd>
           )}
@@ -492,7 +492,7 @@ function NewMenu({
         <AppIcon name="Plus" size={11} />
       </button>
       {open ? (
-        <div className="absolute right-0 top-full z-30 mt-1 w-[180px] overflow-hidden rounded-md border border-stroke bg-white py-1 shadow-lg">
+        <div className="absolute right-0 top-full z-30 mt-1 w-[180px] overflow-hidden rounded-md border border-stroke bg-panel py-1 shadow-lg">
           <MenuRow
             icon="FileNew"
             label="New component"
@@ -712,7 +712,7 @@ function TreeFolder({
                 <AppIcon name="Drag" size={11} />
               </button>
               {menuOpen ? (
-                <div className="absolute right-0 top-full z-30 mt-1 w-[180px] overflow-hidden rounded-md border border-stroke bg-white py-1 shadow-lg">
+                <div className="absolute right-0 top-full z-30 mt-1 w-[180px] overflow-hidden rounded-md border border-stroke bg-panel py-1 shadow-lg">
                   <MenuRow
                     icon="Type"
                     label="Rename"
@@ -770,7 +770,7 @@ function FolderNameInput({
         else if (e.key === "Escape") onCancel();
       }}
       onBlur={() => onCommit(value.trim())}
-      className="h-5 flex-1 rounded border border-accent/50 bg-white px-1 text-[12px] text-ink outline-none shadow-[0_0_0_3px_rgba(16,185,129,0.08)]"
+      className="h-5 flex-1 rounded border border-accent/50 bg-panel px-1 text-[12px] text-ink outline-none shadow-[0_0_0_3px_rgba(16,185,129,0.08)]"
     />
   );
 }
@@ -886,7 +886,7 @@ function FileContextMenu({
 }) {
   return (
     <div
-      className="fixed z-50 min-w-[200px] rounded-md border border-stroke bg-white py-1 shadow-lg"
+      className="fixed z-50 min-w-[200px] rounded-md border border-stroke bg-panel py-1 shadow-lg"
       style={{ left: x, top: y }}
       onMouseDown={(e) => e.stopPropagation()}
     >
@@ -947,7 +947,7 @@ function PrimitivesPalette({
               className={
                 "rounded-full px-2 py-0.5 text-[10.5px] font-medium transition " +
                 (active
-                  ? "bg-ink text-white"
+                  ? "bg-ink text-panel"
                   : "text-ink-muted hover:bg-panel-soft hover:text-ink")
               }
             >
@@ -1011,7 +1011,7 @@ function PrimitiveCard({
       onDragEnd={onDragEnd}
       onClick={onClick}
       title={`${primitive.label} · click to insert · drag to place`}
-      className="group flex flex-col overflow-hidden rounded-lg border border-stroke bg-white transition hover:border-accent/50 hover:shadow-[0_2px_10px_-4px_rgba(0,0,0,0.08)] active:cursor-grabbing"
+      className="group flex flex-col overflow-hidden rounded-lg border border-stroke bg-panel transition hover:border-accent/50 hover:shadow-[0_2px_10px_-4px_rgba(0,0,0,0.08)] active:cursor-grabbing"
     >
       <div className="relative flex h-[60px] items-center justify-center overflow-hidden bg-panel-soft/60 transition group-hover:bg-panel-soft">
         <PrimitivePreview id={primitive.id} />
@@ -1043,17 +1043,20 @@ function PrimitivePreview({ id }: { id: Primitive["id"] }) {
   switch (id) {
     case "div":
       return (
-        <div className="h-9 w-16 rounded-md border border-dashed border-gray-400/70 bg-white/70" />
+        <div className="h-9 w-16 rounded-md border border-dashed border-gray-400/70 bg-white/70 dark:border-white/30 dark:bg-white/5" />
       );
     case "button":
+      // Button mockup. In light mode the chip is dark (like a real filled
+      // button); in dark mode we flip to light so "button" still reads as a
+      // pressable element against the dark card background.
       return (
-        <div className="flex h-6 items-center gap-1 rounded-md bg-gray-900 px-2.5">
-          <span className="text-[9px] font-semibold text-white">Button</span>
+        <div className="flex h-6 items-center gap-1 rounded-md bg-gray-900 px-2.5 dark:bg-gray-100">
+          <span className="text-[9px] font-semibold text-white dark:text-gray-900">Button</span>
         </div>
       );
     case "input":
       return (
-        <div className="flex h-6 w-20 items-center rounded-md border border-gray-300 bg-white px-2">
+        <div className="flex h-6 w-20 items-center rounded-md border border-gray-300 bg-panel px-2 dark:border-gray-600">
           <span className="h-2.5 w-px animate-pulse bg-gray-400" />
           <span className="ml-1 text-[9px] text-gray-400">Type…</span>
         </div>
@@ -1084,7 +1087,7 @@ function PrimitivePreview({ id }: { id: Primitive["id"] }) {
       );
     case "icon":
       return (
-        <div className="grid size-8 place-items-center rounded-md bg-emerald-100 text-emerald-700">
+        <div className="grid size-8 place-items-center rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
           <svg viewBox="0 0 24 24" className="size-4" fill="currentColor">
             <path d="M12 2l2.39 4.84L20 8l-4 3.9.94 5.5L12 15l-4.94 2.4L8 11.9 4 8l5.61-1.16L12 2z" />
           </svg>
@@ -1092,7 +1095,7 @@ function PrimitivePreview({ id }: { id: Primitive["id"] }) {
       );
     case "flex":
       return (
-        <div className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white p-1.5">
+        <div className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-panel p-1.5 dark:border-gray-700">
           <span className="size-4 rounded-full bg-gray-300" />
           <div className="flex flex-col gap-0.5">
             <span className="h-1 w-8 rounded-full bg-gray-400/80" />
@@ -1110,7 +1113,7 @@ function PrimitivePreview({ id }: { id: Primitive["id"] }) {
       );
     case "card":
       return (
-        <div className="flex w-20 flex-col gap-1 rounded-md border border-gray-200 bg-white p-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+        <div className="flex w-20 flex-col gap-1 rounded-md border border-gray-200 bg-panel p-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] dark:border-gray-700">
           <div className="flex items-center justify-between">
             <span className="h-1 w-6 rounded-full bg-gray-400/80" />
             <span className="h-1.5 w-3 rounded-full bg-emerald-200" />

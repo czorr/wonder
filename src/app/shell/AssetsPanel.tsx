@@ -302,7 +302,7 @@ function AssetTile({
 
   return (
     <div
-      className="group relative flex flex-col overflow-hidden rounded-lg border border-stroke bg-white transition hover:border-accent/50 hover:shadow-[0_2px_10px_-4px_rgba(0,0,0,0.08)]"
+      className="group relative flex flex-col overflow-hidden rounded-lg border border-stroke bg-panel transition hover:border-accent/50 hover:shadow-[0_2px_10px_-4px_rgba(0,0,0,0.08)]"
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
@@ -343,7 +343,7 @@ function AssetTile({
           </button>
           {menuOpen ? (
             <div
-              className="absolute right-0 top-full z-30 mt-1 w-[180px] overflow-hidden rounded-md border border-stroke bg-white py-1 shadow-lg"
+              className="absolute right-0 top-full z-30 mt-1 w-[180px] overflow-hidden rounded-md border border-stroke bg-panel py-1 shadow-lg"
               onMouseLeave={() => setMenuOpen(false)}
             >
               <MenuRow label="Copy path" onClick={copyPath} />

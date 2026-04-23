@@ -78,7 +78,14 @@ export type SandboxOutgoing =
    * overlays still get their rect updates (the parent chrome hides them
    * anyway) but the canvas stops behaving like an editor.
    */
-  | { type: "sandbox:setInteractive"; interactive: boolean };
+  | { type: "sandbox:setInteractive"; interactive: boolean }
+  /**
+   * Flip the dark-mode class on the iframe's <html>. The Play CDN inside the
+   * runtime is configured with `darkMode: "class"` so this switches every
+   * `dark:bg-*`, `dark:text-*` rule in the user's component at once —
+   * matching how the chrome's own `.dark` class repaints the editor UI.
+   */
+  | { type: "sandbox:setTheme"; dark: boolean };
 
 export function isSandboxMessage(data: unknown): data is SandboxIncoming {
   return (

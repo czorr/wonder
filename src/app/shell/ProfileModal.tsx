@@ -48,7 +48,7 @@ export function ProfileModal() {
       onMouseDown={closeProfile}
     >
       <div
-        className="flex h-[600px] max-h-[calc(100vh-80px)] w-[820px] max-w-[calc(100vw-80px)] overflow-hidden rounded-xl border border-stroke bg-white shadow-2xl"
+        className="flex h-[600px] max-h-[calc(100vh-80px)] w-[820px] max-w-[calc(100vw-80px)] overflow-hidden rounded-xl border border-stroke bg-panel shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* Left rail */}
@@ -115,7 +115,7 @@ function NavItem({
       className={
         "flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] transition " +
         (active
-          ? "bg-white text-ink shadow-[0_0_0_1px] shadow-stroke"
+          ? "bg-panel text-ink shadow-[0_0_0_1px] shadow-stroke"
           : "text-ink-soft hover:bg-white/60 hover:text-ink")
       }
     >
@@ -186,7 +186,7 @@ function BlockRow({
     <div className="border-b border-stroke py-4 last:border-b-0">
       <div className="flex items-center gap-4">
         {icon ? (
-          <div className="grid size-8 shrink-0 place-items-center rounded-md border border-stroke bg-white text-ink">
+          <div className="grid size-8 shrink-0 place-items-center rounded-md border border-stroke bg-panel text-ink">
             <AppIcon name={icon} size={16} />
           </div>
         ) : null}
@@ -263,7 +263,7 @@ function ProfileSection() {
       >
         <button
           disabled
-          className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-stroke bg-white px-2.5 py-1 text-[11.5px] font-medium text-ink-faint"
+          className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-stroke bg-panel px-2.5 py-1 text-[11.5px] font-medium text-ink-faint"
         >
           <AppIcon name="LogOut" size={11} />
           Sign in
@@ -305,7 +305,7 @@ function AISection() {
                     "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11.5px] font-medium transition " +
                     (active
                       ? "border-accent bg-accent-tint text-accent"
-                      : "border-stroke bg-white text-ink-soft hover:bg-panel-soft")
+                      : "border-stroke bg-panel text-ink-soft hover:bg-panel-soft")
                   }
                 >
                   <AppIcon
@@ -419,7 +419,7 @@ function ProviderBlock({ providerId }: { providerId: ProviderId }) {
     >
       {disabled ? null : (
         <div className="flex items-center gap-2">
-          <div className="flex flex-1 items-center gap-1.5 rounded-md border border-stroke bg-white px-2 py-1.5">
+          <div className="flex flex-1 items-center gap-1.5 rounded-md border border-stroke bg-panel px-2 py-1.5">
             <AppIcon name="Key" size={12} className="text-ink-faint" />
             <input
               type={show ? "text" : "password"}
@@ -516,7 +516,7 @@ function Toggle({
     >
       <span
         className={
-          "absolute top-0.5 grid size-4 place-items-center rounded-full bg-white shadow transition " +
+          "absolute top-0.5 grid size-4 place-items-center rounded-full bg-panel shadow transition " +
           (checked ? "left-[18px]" : "left-0.5")
         }
       />
@@ -542,7 +542,7 @@ function PlainInput({
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       style={{ width }}
-      className="rounded-md border border-stroke bg-white px-2 py-1 text-[12px] text-ink placeholder:text-ink-faint outline-none transition focus:border-accent/60 focus:shadow-[0_0_0_3px_rgba(16,185,129,0.08)]"
+      className="rounded-md border border-stroke bg-panel px-2 py-1 text-[12px] text-ink placeholder:text-ink-faint outline-none transition focus:border-accent/60 focus:shadow-[0_0_0_3px_rgba(16,185,129,0.08)]"
     />
   );
 }
