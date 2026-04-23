@@ -238,134 +238,11 @@ function normalizeFolderName(s: string): string {
   return s.trim().replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
 }
 
-const STAT_TILE = `import { TrendingUp, DollarSign } from "lucide-react";
-
-export default function StatTile() {
-  return (
-    <div className="flex flex-col gap-3 p-5 bg-white border border-gray-200 rounded-xl">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-600">Monthly recurring revenue</span>
-        <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-50">
-          <DollarSign size={14} strokeWidth={2} className="text-emerald-700" />
-        </div>
-      </div>
-      <div className="text-3xl font-semibold text-gray-900">$48,291</div>
-      <div className="flex items-center gap-2 text-xs">
-        <span className="text-emerald-700 font-medium">▲ 12.4%</span>
-        <span className="text-gray-500">vs. last month</span>
-      </div>
-    </div>
-  );
-}
-`;
-
-const ACTIVE_USERS = `export default function ActiveUsers() {
-  return (
-    <div className="flex flex-col gap-3 p-5 bg-white border border-gray-200 rounded-xl w-[260px]">
-      <div className="text-sm font-medium text-gray-600">Active users</div>
-      <div className="text-3xl font-semibold text-gray-900">12,430</div>
-      <div className="flex items-center gap-2 text-xs">
-        <span className="text-rose-500 font-medium">▼ 2.1%</span>
-        <span className="text-gray-500">last 7 days</span>
-      </div>
-    </div>
-  );
-}
-`;
-
-const ORDERS = `export default function Orders() {
-  return (
-    <div className="flex flex-col gap-3 p-5 bg-white border border-gray-200 rounded-xl w-[260px]">
-      <div className="text-sm font-medium text-gray-600">Orders today</div>
-      <div className="text-3xl font-semibold text-gray-900">384</div>
-      <div className="flex items-center gap-2 text-xs">
-        <span className="text-emerald-700 font-medium">▲ 8.7%</span>
-        <span className="text-gray-500">vs. yest</span>
-      </div>
-    </div>
-  );
-}
-`;
-
-const BUTTON_PRIMARY = `export default function ButtonPrimary() {
-  return (
-    <button className="flex items-center gap-1.5 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm">
-      View report →
-    </button>
-  );
-}
-`;
-
-const BADGE_SUCCESS = `export default function BadgeSuccess() {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-      <span className="size-1.5 rounded-full bg-emerald-500" />
-      Synced
-    </span>
-  );
-}
-`;
-
-const seed: WonderComponent[] = [
-  {
-    id: "active-users",
-    name: "ActiveUsers",
-    filename: "ActiveUsers.tsx",
-    folder: "dashboard",
-    source: ACTIVE_USERS,
-    x: 80,
-    y: 120,
-    width: 300,
-    height: 170,
-  },
-  {
-    id: "stat-tile",
-    name: "StatTile",
-    filename: "StatTile.tsx",
-    folder: "dashboard",
-    source: STAT_TILE,
-    x: 420,
-    y: 80,
-    width: 380,
-    height: 220,
-  },
-  {
-    id: "orders",
-    name: "Orders",
-    filename: "Orders.tsx",
-    folder: "dashboard",
-    source: ORDERS,
-    x: 840,
-    y: 120,
-    width: 300,
-    height: 170,
-  },
-  {
-    id: "button-primary",
-    name: "ButtonPrimary",
-    filename: "Button.tsx",
-    folder: "primitives",
-    source: BUTTON_PRIMARY,
-    x: 340,
-    y: 360,
-    width: 180,
-    height: 80,
-  },
-  {
-    id: "badge-success",
-    name: "BadgeSuccess",
-    filename: "Badge.tsx",
-    folder: "primitives",
-    source: BADGE_SUCCESS,
-    x: 600,
-    y: 360,
-    width: 180,
-    height: 80,
-  },
-];
-
-const components = Object.fromEntries(seed.map((c) => [c.id, c]));
-const order = seed.map((c) => c.id);
+// The store boots into an "empty, no project" state — the shell's
+// ProjectLauncher takes over until the user opens/creates a project,
+// at which point `replaceProject` hydrates everything. This avoids
+// ever rendering the editor against a fake in-memory document that
+// can't be saved to disk in a meaningful way.
 
 /**
  * Initial state for a brand-new untitled project (no components).
@@ -435,23 +312,24 @@ export const useProject = create<State>((set, get) => {
   };
 
   return {
-    components,
-    order,
-    selectedComponentId: "stat-tile",
-    selectedElementPath: "0",
-    openTabs: ["stat-tile"],
-    activeTab: "stat-tile",
+    components: {},
+    order: [],
+    selectedComponentId: null,
+    selectedElementPath: null,
+    openTabs: [],
+    activeTab: null,
     propValues: {},
-    // Seed the untitled draft with default tokens so new projects have a
-    // coherent design system from the first keystroke.
+    // Start with default tokens so the design surfaces render cleanly even
+    // before a project is opened (e.g. the launcher).
     tokens: defaultTokens(),
     declaredFolders: [],
     past: [],
     future: [],
     projectMeta: {
-      // The app boots with the seed project as an untitled draft.
+      // Boot as "no project" — the shell shows ProjectLauncher until the
+      // user picks or creates one. `path === null` is the signal.
       path: null,
-      name: "Untitled",
+      name: "",
       createdAt: new Date().toISOString(),
       dirty: false,
       lastSavedAt: null,

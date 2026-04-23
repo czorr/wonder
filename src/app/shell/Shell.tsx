@@ -10,6 +10,7 @@ import { PreviewOverlay } from "@/app/shell/PreviewOverlay";
 import { ProjectTokensStyle } from "@/app/shell/ProjectTokensStyle";
 import { ResizableSidebar } from "@/app/shell/ResizableSidebar";
 import { ProfileModal } from "@/app/shell/ProfileModal";
+import { ProjectLauncher } from "@/app/shell/ProjectLauncher";
 import { useProject } from "@/store/project";
 import { useCanvas } from "@/store/canvas";
 import { useChat } from "@/store/chat";
@@ -29,6 +30,11 @@ export function Shell() {
   // TitleStrip avatar and the chat header cog — both funnel through
   // `useChat.openProfile()` so there's one source of truth.
   const profileOpen = useChat((s) => s.profileOpen);
+  // Gate the whole editor behind a ProjectLauncher when no project is
+  // loaded. `path === null` is the canonical "no project" signal — set by
+  // initial boot, by File → Close, and by failed project restore.
+  const projectPath = useProject((s) => s.projectMeta.path);
+  const hasProject = !!projectPath;
 
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
@@ -85,6 +91,20 @@ export function Shell() {
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
+
+  // ProjectLauncher path: no project loaded → show the welcome screen.
+  // We still mount ProjectTokensStyle + ProfileModal so tokens render and
+  // the profile/settings modal can be opened from the launcher surface
+  // (wired later if needed). The rest of the editor chrome is skipped.
+  if (!hasProject) {
+    return (
+      <>
+        <ProjectTokensStyle />
+        <ProjectLauncher />
+        {profileOpen ? <ProfileModal /> : null}
+      </>
+    );
+  }
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-canvas text-ink">

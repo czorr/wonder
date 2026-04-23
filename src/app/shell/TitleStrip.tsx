@@ -5,6 +5,7 @@ import { useChat } from "@/store/chat";
 import {
   actionNewProject,
   actionOpenProject,
+  actionCloseProject,
   actionSave,
   actionSaveAs,
   loadProjectFromPath,
@@ -215,6 +216,16 @@ function FileMenu({ onClose }: { onClose: () => void }) {
         label="Export current .tsx"
         disabled={!activeTab}
         onClick={run(exportCurrent)}
+      />
+
+      <Divider />
+
+      {/* "Close project" returns to the ProjectLauncher. Handy when the
+          user wants to pick a different project without quitting the app. */}
+      <MenuItem
+        icon={<AppIcon name="CircleSlash" size={13} />}
+        label="Close project"
+        onClick={run(actionCloseProject)}
       />
     </div>
   );

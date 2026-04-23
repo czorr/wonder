@@ -12,6 +12,7 @@ import {
 import { addRecentProject, removeRecentProject } from "./appState";
 import { ProjectFileError } from "./migrate";
 import { PROJECT_FILE_VERSION } from "./types";
+import { defaultTokens } from "@/project/tokens";
 
 // ---------------------------------------------------------------------------
 // Discard confirmation — central helper so every flow that replaces the
@@ -40,13 +41,49 @@ async function showError(title: string, msg: string) {
 // New project
 // ---------------------------------------------------------------------------
 
-export async function actionNewProject(): Promise<void> {
-  if (!(await confirmDiscardIfDirty())) return;
-  useProject.getState().newProject();
-  // Reset the canvas view so users don't wake up looking at empty space
-  // panned 800px to the right from their last project.
+/**
+ * Create a new project by picking a folder and scaffolding into it.
+ *
+ * Figma-style flow: Wonder is a local-file editor, so "New Project" always
+ * lands on disk immediately — there's no in-memory untitled limbo. This
+ * keeps the launcher honest (everything it lists is a real, loadable
+ * project) and avoids the "where did my work go?" surprise you get when a
+ * fake Untitled project is silently discarded.
+ *
+ * The save dialog defaults to `~/Documents/<basename>` on macOS so the
+ * user can just type a folder name. `loadProjectFromPath` handles the
+ * actual scaffolding via `initializeFolderAsProject` — we reuse that
+ * path so Open and New go through the same write codepath.
+ */
+export async function actionNewProject(): Promise<boolean> {
+  if (!(await confirmDiscardIfDirty())) return false;
+
+  const target = await saveDialog({
+    title: "Create new Wonder project",
+    defaultPath: "Untitled",
+  });
+  if (!target) return false;
+
+  // `loadProjectFromPath` handles both "exists as Wonder project" (load) and
+  // "doesn't exist yet / empty folder" (initialize + load). Either way the
+  // store ends up hydrated against `target` and the canvas pans to origin.
+  const loaded = await loadProjectFromPath(target);
+  if (!loaded) return false;
+
   useCanvas.getState().setPan({ x: 60, y: 60 });
   useCanvas.getState().setZoom(1);
+  return true;
+}
+
+/**
+ * "Close current project" — returns the user to the ProjectLauncher without
+ * touching disk. Used by File → Close and by the launcher's back button
+ * when you want to pick a different project.
+ */
+export async function actionCloseProject(): Promise<boolean> {
+  if (!(await confirmDiscardIfDirty())) return false;
+  useProject.getState().newProject();
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,12 +119,20 @@ export async function loadProjectFromPath(path: string): Promise<boolean> {
   store.setLoading(true);
   try {
     if (!(await folderIsWonderProject(path))) {
-      await showError(
-        "Not a Wonder project",
-        `The folder "${basename(path)}" does not contain a wonder.json file.`,
-      );
-      await removeRecentProject(path);
-      return false;
+      // Fresh folder — offer to initialize instead of dead-ending the user.
+      // Empty folders initialize silently (they just picked it); non-empty
+      // folders get a confirm so we don't litter an existing directory
+      // without warning.
+      const initialized = await initializeFolderAsProject(path);
+      if (!initialized) {
+        // Declined, or a hard failure inside initialize (already shown).
+        // Drop it from recents so stale broken entries don't accumulate.
+        await removeRecentProject(path);
+        return false;
+      }
+      // Fall through — we wrote wonder.json + scaffolding; read it back
+      // like any other open so the UI state ends up identical to "opened
+      // an existing project".
     }
 
     const loaded = await openProject(path);
@@ -253,6 +298,78 @@ async function writeToPath(path: string, name: string): Promise<boolean> {
     await showError(
       "Save failed",
       `Could not save project: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// First-run initialization
+//
+// Writes an empty Wonder project into `path` so subsequent loads see the
+// same structure they'd see on any other project. Used when the user runs
+// "Open Project…" on a folder that isn't a Wonder workspace yet — instead
+// of dead-ending them with an error, we scaffold the folder in place.
+//
+// Empty folder → init silently (they just picked it in the dialog, another
+// confirm is friction). Non-empty folder → confirm, because dropping
+// wonder.json / components/ / design/ into a directory with other files
+// without warning is surprising.
+//
+// The resulting project is *empty* (no seed components) — opening a folder
+// is about claiming it as a workspace, not importing the in-memory demo.
+// Users who want to dump their current in-memory doc somewhere should use
+// Save As, which takes the current components along for the ride.
+// ---------------------------------------------------------------------------
+
+async function initializeFolderAsProject(path: string): Promise<boolean> {
+  const name = basename(path) || "Untitled";
+  const isEmpty = await folderIsEmpty(path);
+
+  if (!isEmpty) {
+    const ok = await ask(
+      `"${name}" isn't a Wonder project yet.\n\n` +
+        `Initialize it here? This will add:\n` +
+        `  • wonder.json (project manifest)\n` +
+        `  • components/ (your .tsx files)\n` +
+        `  • design/tokens.json + tokens.css\n` +
+        `  • .wonder/ (runtime data)\n\n` +
+        `Existing files in the folder are left alone.`,
+      {
+        title: "Initialize Wonder project?",
+        kind: "info",
+        okLabel: "Initialize",
+        cancelLabel: "Cancel",
+      },
+    );
+    if (!ok) return false;
+  }
+
+  try {
+    const createdAt = new Date().toISOString();
+    await writeProjectFolder({
+      path,
+      name,
+      createdAt,
+      components: {},
+      order: [],
+      propValues: {},
+      declaredFolders: [],
+      canvas: { zoom: 1, pan: { x: 0, y: 0 } },
+      selection: {
+        componentId: null,
+        elementPath: null,
+        openTabs: [],
+        activeTab: null,
+      },
+      tokens: defaultTokens(),
+    });
+    return true;
+  } catch (err) {
+    await showError(
+      "Could not initialize",
+      `Failed to write project scaffolding into "${name}": ` +
+        (err instanceof Error ? err.message : String(err)),
     );
     return false;
   }

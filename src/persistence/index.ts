@@ -20,6 +20,7 @@ export {
 export {
   actionNewProject,
   actionOpenProject,
+  actionCloseProject,
   actionSave,
   actionSaveAs,
   loadProjectFromPath,

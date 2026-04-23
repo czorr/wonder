@@ -31,7 +31,20 @@
         { "path": "$APPLOCALDATA/**" },
         { "path": "$DOCUMENT/**" },
         { "path": "$DESKTOP/**" },
-        { "path": "$DOWNLOAD/**" }
+        { "path": "$DOWNLOAD/**" },
+
+        { "path": "$HOME/**/.*" },
+        { "path": "$HOME/**/.*/**" },
+        { "path": "$APPDATA/**/.*" },
+        { "path": "$APPDATA/**/.*/**" },
+        { "path": "$APPLOCALDATA/**/.*" },
+        { "path": "$APPLOCALDATA/**/.*/**" },
+        { "path": "$DOCUMENT/**/.*" },
+        { "path": "$DOCUMENT/**/.*/**" },
+        { "path": "$DESKTOP/**/.*" },
+        { "path": "$DESKTOP/**/.*/**" },
+        { "path": "$DOWNLOAD/**/.*" },
+        { "path": "$DOWNLOAD/**/.*/**" }
       ]
     },
 
