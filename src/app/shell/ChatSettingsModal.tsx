@@ -1,4 +1,4 @@
-import { X, Eye, EyeOff, Check, KeyRound, BadgeCheck } from "lucide-react";
+import { AppIcon } from "@/app/icons";
 import { useEffect, useState } from "react";
 import { useChat } from "@/store/chat";
 import { PROVIDERS, allModels, type ProviderId } from "@/agent";
@@ -37,14 +37,14 @@ export function ChatSettingsModal() {
       >
         <div className="flex items-center justify-between border-b border-stroke px-4 py-3">
           <div className="flex items-center gap-2">
-            <KeyRound size={14} strokeWidth={1.75} className="text-ink-muted" />
+            <AppIcon name="Key" size={14} className="text-ink-muted" />
             <span className="text-[13px] font-semibold text-ink">Chat Settings</span>
           </div>
           <button
             onClick={closeSettings}
             className="grid size-6 place-items-center rounded-md text-ink-muted hover:bg-panel-soft hover:text-ink"
           >
-            <X size={14} strokeWidth={1.75} />
+            <AppIcon name="X" size={14} />
           </button>
         </div>
 
@@ -198,7 +198,7 @@ function ProviderRow({ providerId }: { providerId: ProviderId }) {
           </span>
         ) : hasStoredKey ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
-            <BadgeCheck size={10} strokeWidth={2} /> Key saved
+            <AppIcon name="BadgeCheck" size={10} /> Key saved
           </span>
         ) : null}
       </div>
@@ -220,7 +220,7 @@ function ProviderRow({ providerId }: { providerId: ProviderId }) {
       {!disabled ? (
         <>
           <div className="mt-3 flex items-center gap-1.5 rounded-md border border-stroke bg-white px-2 py-1.5">
-            <KeyRound size={12} strokeWidth={1.75} className="text-ink-faint" />
+            <AppIcon name="Key" size={12} className="text-ink-faint" />
             <input
               type={show ? "text" : "password"}
               spellCheck={false}
@@ -237,7 +237,7 @@ function ProviderRow({ providerId }: { providerId: ProviderId }) {
               title={show ? "Hide" : "Show"}
               className="grid size-5 place-items-center rounded text-ink-faint hover:bg-panel-soft hover:text-ink"
             >
-              {show ? <EyeOff size={11} strokeWidth={1.75} /> : <Eye size={11} strokeWidth={1.75} />}
+              {show ? <AppIcon name="EyeOff" size={11} /> : <AppIcon name="Eye" size={11} />}
             </button>
           </div>
 
@@ -252,7 +252,7 @@ function ProviderRow({ providerId }: { providerId: ProviderId }) {
                   : "bg-accent text-white hover:brightness-110")
               }
             >
-              {saved ? <Check size={11} strokeWidth={2.5} /> : null}
+              {saved ? <AppIcon name="Check" size={11} /> : null}
               {saved ? "Saved" : saving ? "Saving…" : "Save key"}
             </button>
             {hasStoredKey ? (

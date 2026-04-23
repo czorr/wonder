@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import { AppIcon } from "@/app/icons";
 import { useProject } from "@/store/project";
 import { useCanvas } from "@/store/canvas";
 import { Sandbox, type SandboxHandle } from "@/sandbox/Sandbox";
@@ -124,7 +124,7 @@ export function PreviewOverlay() {
             onClick={closePreview}
             className="grid size-8 place-items-center rounded-lg bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition"
           >
-            <X size={16} strokeWidth={2} />
+            <AppIcon name="X" size={16} />
           </button>
         </div>
       </div>
@@ -177,7 +177,7 @@ export function PreviewOverlay() {
             onClick={() => setIndex((i) => (i - 1 + order.length) % order.length)}
             className="grid size-9 place-items-center rounded-full bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition"
           >
-            <ChevronLeft size={18} strokeWidth={2} />
+            <AppIcon name="ChevronLeft" size={18} />
           </button>
 
           <div className="flex items-center gap-1.5">
@@ -198,7 +198,7 @@ export function PreviewOverlay() {
             onClick={() => setIndex((i) => (i + 1) % order.length)}
             className="grid size-9 place-items-center rounded-full bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition"
           >
-            <ChevronRight size={18} strokeWidth={2} />
+            <AppIcon name="ChevronRight" size={18} />
           </button>
         </div>
       )}

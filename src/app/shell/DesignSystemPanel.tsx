@@ -19,7 +19,7 @@
 //     the current volume.
 // ---------------------------------------------------------------------------
 
-import { ChevronDown, ChevronRight, Plus, RotateCcw, Sparkles, Trash2 } from "lucide-react";
+import { AppIcon } from "@/app/icons";
 import { useRef, useState } from "react";
 import { useProject } from "@/store/project";
 import {
@@ -54,7 +54,7 @@ export function DesignSystemPanel() {
           onClick={() => setExtractOpen(true)}
           className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-accent/30 bg-accent-tint px-2 py-1.5 text-[11px] font-medium text-accent-ink hover:bg-accent/10"
         >
-          <Sparkles size={12} strokeWidth={1.75} />
+          <AppIcon name="Sparkles" size={12} />
           Extract from components
         </button>
       </div>
@@ -73,7 +73,7 @@ export function DesignSystemPanel() {
           className="flex items-center gap-1 rounded-md border border-stroke bg-white px-2 py-1 text-[10.5px] text-ink-muted hover:text-ink hover:border-stroke-strong"
           title="Reset all tokens to Wonder defaults"
         >
-          <RotateCcw size={11} strokeWidth={2} /> Reset to defaults
+          <AppIcon name="Rotate" size={11} /> Reset to defaults
         </button>
       </div>
     </div>
@@ -95,7 +95,6 @@ function Group({
   headerRight?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(true);
-  const Chevron = open ? ChevronDown : ChevronRight;
   return (
     <div className="border-b border-stroke">
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
@@ -103,7 +102,11 @@ function Group({
           onClick={() => setOpen((o) => !o)}
           className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-ink-soft"
         >
-          <Chevron size={11} strokeWidth={2} className="text-ink-faint" />
+          <AppIcon
+            name={open ? "ChevronDown" : "ChevronRight"}
+            size={11}
+            className="text-ink-faint"
+          />
           {title}
         </button>
         {headerRight}
@@ -127,7 +130,7 @@ function AddButton({
       onClick={onClick}
       className="flex items-center gap-0.5 text-[10px] text-ink-muted hover:text-ink"
     >
-      <Plus size={11} strokeWidth={2} /> {label}
+      <AppIcon name="Plus" size={11} /> {label}
     </button>
   );
 }
@@ -296,7 +299,7 @@ function ColorFamilyEditor({
             title="Remove family"
             className="text-ink-faint hover:text-rose-600"
           >
-            <Trash2 size={11} strokeWidth={2} />
+            <AppIcon name="Trash" size={11} />
           </button>
         ) : null}
       </div>
@@ -421,7 +424,7 @@ function ShadeRow({
           title="Remove shade"
           className="text-ink-faint hover:text-rose-600"
         >
-          <Trash2 size={10} strokeWidth={2} />
+          <AppIcon name="Trash" size={10} />
         </button>
       ) : (
         <span className="w-3 shrink-0" />
@@ -476,11 +479,11 @@ function FontsSection({
         >
           {tokens.fonts.display !== undefined ? (
             <>
-              <Trash2 size={10} strokeWidth={2} /> Display
+              <AppIcon name="Trash" size={10} /> Display
             </>
           ) : (
             <>
-              <Plus size={11} strokeWidth={2} /> Display
+              <AppIcon name="Plus" size={11} /> Display
             </>
           )}
         </button>
@@ -700,7 +703,7 @@ function RadiusRow({
         title="Remove radius"
         className="text-ink-faint hover:text-rose-600"
       >
-        <Trash2 size={10} strokeWidth={2} />
+        <AppIcon name="Trash" size={10} />
       </button>
     </div>
   );

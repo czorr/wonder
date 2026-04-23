@@ -1,37 +1,4 @@
-import {
-  ChevronDown,
-  ChevronRight,
-  Code2,
-  Eye,
-  EyeOff,
-  Layers,
-  Paintbrush,
-  Plus,
-  Search,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-  AlignJustify,
-  ArrowRight,
-  ArrowDown,
-  ArrowLeft,
-  ArrowUp,
-  Square,
-  Rows3,
-  Columns3,
-  Minus,
-  AlignHorizontalJustifyStart,
-  AlignHorizontalJustifyCenter,
-  AlignHorizontalJustifyEnd,
-  AlignHorizontalSpaceBetween,
-  AlignHorizontalSpaceAround,
-  AlignVerticalJustifyStart,
-  AlignVerticalJustifyCenter,
-  AlignVerticalJustifyEnd,
-  AlignStartVertical,
-  StretchHorizontal,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { AppIcon, type AppIconName } from "@/app/icons";
 import {
   useEffect,
   useMemo,
@@ -80,11 +47,11 @@ const FONT_WEIGHTS = [
 ];
 const FONT_WEIGHT_VALUES = new Set(FONT_WEIGHTS.map((f) => f.value));
 
-const TEXT_ALIGNS = [
-  { value: "text-left", icon: AlignLeft },
-  { value: "text-center", icon: AlignCenter },
-  { value: "text-right", icon: AlignRight },
-  { value: "text-justify", icon: AlignJustify },
+const TEXT_ALIGNS: { value: string; icon: AppIconName }[] = [
+  { value: "text-left", icon: "AlignLeft" },
+  { value: "text-center", icon: "AlignCenter" },
+  { value: "text-right", icon: "AlignRight" },
+  { value: "text-justify", icon: "AlignJustify" },
 ];
 const TEXT_ALIGN_VALUES = new Set(TEXT_ALIGNS.map((a) => a.value));
 
@@ -131,38 +98,38 @@ const BORDER_WIDTH_VALUES = new Set(BORDER_WIDTHS.map((b) => b.value));
 
 const STATE_TABS = ["base", "hover", "focus", "active"];
 
-const DISPLAY_OPTIONS = [
-  { value: "block", icon: Square, label: "block" },
-  { value: "flex", icon: Rows3, label: "flex" },
-  { value: "grid", icon: Columns3, label: "grid" },
-  { value: "inline", icon: Minus, label: "inline" },
-  { value: "hidden", icon: EyeOff, label: "hidden" },
+const DISPLAY_OPTIONS: { value: string; icon: AppIconName; label: string }[] = [
+  { value: "block", icon: "Square", label: "block" },
+  { value: "flex", icon: "Rows", label: "flex" },
+  { value: "grid", icon: "Columns", label: "grid" },
+  { value: "inline", icon: "Minus", label: "inline" },
+  { value: "hidden", icon: "EyeOff", label: "hidden" },
 ];
 const DISPLAY_VALUES = new Set(DISPLAY_OPTIONS.map((d) => d.value));
 
-const DIRECTION_OPTIONS = [
-  { value: "flex-row", icon: ArrowRight },
-  { value: "flex-col", icon: ArrowDown },
-  { value: "flex-row-reverse", icon: ArrowLeft },
-  { value: "flex-col-reverse", icon: ArrowUp },
+const DIRECTION_OPTIONS: { value: string; icon: AppIconName }[] = [
+  { value: "flex-row", icon: "ArrowRight" },
+  { value: "flex-col", icon: "ArrowDown" },
+  { value: "flex-row-reverse", icon: "ArrowLeft" },
+  { value: "flex-col-reverse", icon: "ArrowUp" },
 ];
 const DIRECTION_VALUES = new Set(DIRECTION_OPTIONS.map((d) => d.value));
 
-const JUSTIFY_OPTIONS = [
-  { value: "justify-start", icon: AlignHorizontalJustifyStart, label: "start" },
-  { value: "justify-center", icon: AlignHorizontalJustifyCenter, label: "center" },
-  { value: "justify-end", icon: AlignHorizontalJustifyEnd, label: "end" },
-  { value: "justify-between", icon: AlignHorizontalSpaceBetween, label: "between" },
-  { value: "justify-around", icon: AlignHorizontalSpaceAround, label: "around" },
+const JUSTIFY_OPTIONS: { value: string; icon: AppIconName; label: string }[] = [
+  { value: "justify-start", icon: "AlignHorizontalStart", label: "start" },
+  { value: "justify-center", icon: "AlignHorizontalCenter", label: "center" },
+  { value: "justify-end", icon: "AlignHorizontalEnd", label: "end" },
+  { value: "justify-between", icon: "AlignHorizontalSpaceBetween", label: "between" },
+  { value: "justify-around", icon: "AlignHorizontalSpaceAround", label: "around" },
 ];
 const JUSTIFY_VALUES = new Set(JUSTIFY_OPTIONS.map((j) => j.value));
 
-const ALIGN_OPTIONS = [
-  { value: "items-start", icon: AlignVerticalJustifyStart, label: "start" },
-  { value: "items-center", icon: AlignVerticalJustifyCenter, label: "center" },
-  { value: "items-end", icon: AlignVerticalJustifyEnd, label: "end" },
-  { value: "items-baseline", icon: AlignStartVertical, label: "baseline" },
-  { value: "items-stretch", icon: StretchHorizontal, label: "stretch" },
+const ALIGN_OPTIONS: { value: string; icon: AppIconName; label: string }[] = [
+  { value: "items-start", icon: "AlignVerticalStart", label: "start" },
+  { value: "items-center", icon: "AlignVerticalCenter", label: "center" },
+  { value: "items-end", icon: "AlignVerticalEnd", label: "end" },
+  { value: "items-baseline", icon: "AlignStretch", label: "baseline" },
+  { value: "items-stretch", icon: "StretchHorizontal", label: "stretch" },
 ];
 const ALIGN_VALUES = new Set(ALIGN_OPTIONS.map((a) => a.value));
 
@@ -307,15 +274,15 @@ export function RightPanel() {
   return (
     <aside className="flex w-[320px] shrink-0 flex-col overflow-x-hidden border-l border-stroke bg-panel text-[12px]">
       <div className="flex h-9 items-center gap-4 border-b border-stroke px-3 text-[11px] font-medium">
-        <PanelTab icon={Paintbrush} label="Design" active={panel === "design"} onClick={() => setPanel("design")} />
-        <PanelTab icon={Code2} label="Props" active={panel === "props"} onClick={() => setPanel("props")} />
-        <PanelTab icon={Layers} label="Layers" active={panel === "layers"} onClick={() => setPanel("layers")} />
+        <PanelTab icon="PaintBrush" label="Design" active={panel === "design"} onClick={() => setPanel("design")} />
+        <PanelTab icon="Code" label="Props" active={panel === "props"} onClick={() => setPanel("props")} />
+        <PanelTab icon="Layers" label="Layers" active={panel === "layers"} onClick={() => setPanel("layers")} />
       </div>
 
       {component ? (
       <div className="flex items-center gap-1 border-b border-stroke px-3 py-2 text-[10.5px] text-ink-muted">
         <span>{component.name}</span>
-        <ChevronRight size={10} className="text-ink-faint" strokeWidth={2} />
+        <AppIcon name="ChevronRight" size={10} className="text-ink-faint" />
         <span className="font-mono text-[10px] text-ink-faint">{path}</span>
       </div>
       ) : null}
@@ -553,7 +520,6 @@ export function RightPanel() {
           <DualRow label="Align">
             <div className="col-span-2 flex items-center rounded-md border border-stroke bg-panel-soft p-0.5">
               {TEXT_ALIGNS.map((a) => {
-                const Icon = a.icon;
                 const active = currentAlign === a.value;
                 return (
                   <button
@@ -566,7 +532,7 @@ export function RightPanel() {
                         : "text-ink-muted hover:text-ink")
                     }
                   >
-                    <Icon size={13} strokeWidth={1.75} />
+                    <AppIcon name={a.icon} size={13} />
                   </button>
                 );
               })}
@@ -691,12 +657,12 @@ function spacingPx(value: string | undefined, prefix: string): number | null {
 }
 
 function PanelTab({
-  icon: Icon,
+  icon,
   label,
   active,
   onClick,
 }: {
-  icon: LucideIcon;
+  icon: AppIconName;
   label: string;
   active?: boolean;
   onClick?: () => void;
@@ -711,7 +677,7 @@ function PanelTab({
           : "border-transparent text-ink-muted hover:text-ink")
       }
     >
-      <Icon size={12} strokeWidth={1.75} />
+      <AppIcon name={icon} size={12} />
       {label}
     </button>
   );
@@ -727,7 +693,6 @@ function Group({
   headerRight?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(true);
-  const Chevron = open ? ChevronDown : ChevronRight;
   return (
     <div className="border-b border-stroke">
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
@@ -735,7 +700,7 @@ function Group({
           onClick={() => setOpen((o) => !o)}
           className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-ink-soft"
         >
-          <Chevron size={11} strokeWidth={2} className="text-ink-faint" />
+          <AppIcon name={open ? "ChevronDown" : "ChevronRight"} size={11} className="text-ink-faint" />
           {title}
         </button>
         {headerRight}
@@ -758,7 +723,7 @@ function ResetButton({ onReset }: { onReset: () => void }) {
   );
 }
 
-function IconToggleGroup<T extends { value: string; icon: LucideIcon; label?: string }>(
+function IconToggleGroup<T extends { value: string; icon: AppIconName; label?: string }>(
   { options, current, onChange, span, showLabel }: {
     options: T[];
     current: string | undefined;
@@ -772,7 +737,6 @@ function IconToggleGroup<T extends { value: string; icon: LucideIcon; label?: st
     <div className={(span === 2 ? "col-span-2 " : "") + "flex flex-col gap-0.5"}>
       <div className="flex items-center rounded-md border border-stroke bg-panel-soft p-0.5">
         {options.map((o) => {
-          const Icon = o.icon;
           const active = current === o.value;
           return (
             <button
@@ -786,7 +750,7 @@ function IconToggleGroup<T extends { value: string; icon: LucideIcon; label?: st
                   : "text-ink-muted hover:text-ink")
               }
             >
-              <Icon size={13} strokeWidth={1.75} />
+              <AppIcon name={o.icon} size={13} />
             </button>
           );
         })}
@@ -851,11 +815,11 @@ function BoxModel({
   );
 }
 
-const SIDE_ICON: Record<Side, LucideIcon> = {
-  t: ArrowUp,
-  r: ArrowRight,
-  b: ArrowDown,
-  l: ArrowLeft,
+const SIDE_ICON: Record<Side, AppIconName> = {
+  t: "ArrowUp",
+  r: "ArrowRight",
+  b: "ArrowDown",
+  l: "ArrowLeft",
 };
 
 function SideInput({
@@ -916,7 +880,7 @@ function SideInput({
     window.addEventListener("mouseup", onUp);
   };
 
-  const Icon = SIDE_ICON[side];
+  const iconName = SIDE_ICON[side];
   const accentCls = accent ? "text-emerald-900" : "text-ink-muted";
   return (
     <div
@@ -933,7 +897,7 @@ function SideInput({
           accentCls
         }
       >
-        <Icon size={9} strokeWidth={2} />
+        <AppIcon name={iconName} size={9} />
       </button>
       <input
         ref={inputRef}
@@ -963,7 +927,7 @@ function SideInput({
 function AddButton() {
   return (
     <button className="flex items-center gap-0.5 text-[10px] text-ink-muted hover:text-ink">
-      <Plus size={11} strokeWidth={2} /> Add
+      <AppIcon name="Plus" size={11} /> Add
     </button>
   );
 }
@@ -1147,7 +1111,7 @@ function SelectBox({
         <span className="shrink-0 text-[10px] font-mono text-ink-faint">
           {value.replace(/^text-|^font-|^rounded-?|^border-?/, "") || value}
         </span>
-        <ChevronDown size={11} className="text-ink-faint" strokeWidth={2} />
+        <AppIcon name="ChevronDown" size={11} className="text-ink-faint" />
       </button>
       {open ? (
         <div
@@ -1155,7 +1119,7 @@ function SelectBox({
           className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 rounded-md border border-stroke bg-white p-1 shadow-lg"
         >
           <div className="flex items-center gap-1 rounded border border-stroke bg-panel-soft px-1.5 py-1">
-            <Search size={11} className="text-ink-faint" strokeWidth={2} />
+            <AppIcon name="Search" size={11} className="text-ink-faint" />
             <input
               autoFocus
               value={q}
@@ -1307,7 +1271,7 @@ function ColorDropdown({
           className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 rounded-md border border-stroke bg-white p-1 shadow-lg"
         >
           <div className="flex items-center gap-1 rounded border border-stroke bg-panel-soft px-1.5 py-1">
-            <Search size={11} className="text-ink-faint" strokeWidth={2} />
+            <AppIcon name="Search" size={11} className="text-ink-faint" />
             <input
               autoFocus
               value={q}
@@ -1552,18 +1516,18 @@ function LayersGroup({
               }
               style={{ paddingLeft: 4 + l.depth * 10 }}
             >
-              <ChevronDown
+              <AppIcon
+                name="ChevronDown"
                 size={10}
-                strokeWidth={2}
                 className="shrink-0 text-ink-faint"
               />
               <span className="font-mono text-pink-600">&lt;{l.tag}&gt;</span>
               <span className="min-w-0 flex-1 truncate font-mono text-ink-muted">
                 {clsPreview}
               </span>
-              <Eye
+              <AppIcon
+                name="Eye"
                 size={10}
-                strokeWidth={1.75}
                 className="shrink-0 text-ink-faint opacity-0 group-hover:opacity-100"
               />
             </button>

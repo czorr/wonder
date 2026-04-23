@@ -1,4 +1,4 @@
-import { GitBranch } from "lucide-react";
+import { AppIcon } from "@/app/icons";
 
 export function StatusBar() {
   return (
@@ -23,7 +23,7 @@ export function StatusBar() {
         <span>50 snapshots</span>
         <Sep />
         <span className="flex items-center gap-1">
-          <GitBranch size={11} strokeWidth={1.75} />
+          <AppIcon name="GitBranch" size={11} />
           main
         </span>
       </div>

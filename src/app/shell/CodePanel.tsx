@@ -1,4 +1,4 @@
-import { X, FileCode2, Check, Loader2, GripHorizontal, Wand2 } from "lucide-react";
+import { AppIcon } from "@/app/icons";
 import Editor, { type OnMount, type BeforeMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useProject } from "@/store/project";
@@ -247,9 +247,9 @@ declare module "motion" {
         className="group absolute inset-x-0 -top-[3px] z-10 flex h-[6px] cursor-ns-resize items-center justify-center"
       >
         <div className="h-[2px] w-10 rounded-full bg-transparent group-hover:bg-accent/60 transition" />
-        <GripHorizontal
+        <AppIcon
+          name="Drag"
           size={14}
-          strokeWidth={1.75}
           className="pointer-events-none absolute text-ink-faint opacity-0 group-hover:opacity-100 transition"
         />
       </div>
@@ -271,11 +271,7 @@ declare module "motion" {
                     : "bg-panel-soft text-ink-muted hover:text-ink")
                 }
               >
-                <FileCode2
-                  size={12}
-                  className="text-ink-faint"
-                  strokeWidth={1.75}
-                />
+                <AppIcon name="FileCode" size={12} className="text-ink-faint" />
                 {c.filename}
                 <button
                   onClick={(e) => {
@@ -284,7 +280,7 @@ declare module "motion" {
                   }}
                   className="ml-1 grid size-4 place-items-center rounded text-ink-faint hover:bg-stroke hover:text-ink-muted"
                 >
-                  <X size={10} strokeWidth={2} />
+                  <AppIcon name="X" size={10} />
                 </button>
               </div>
             );
@@ -297,19 +293,19 @@ declare module "motion" {
               title="Prettify (format document)"
               className="flex items-center gap-1 rounded-md border border-stroke px-2 py-0.5 text-ink-muted hover:bg-panel-soft hover:text-ink"
             >
-              <Wand2 size={10} strokeWidth={2} />
+              <AppIcon name="Wand" size={10} />
               Prettify
             </button>
           ) : null}
           {active ? (
             dirty ? (
               <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-amber-800 font-medium">
-                <Loader2 size={10} strokeWidth={2.5} className="animate-spin" />
+                <AppIcon name="Loader" size={10} className="animate-spin" />
                 editing
               </span>
             ) : (
               <span className="flex items-center gap-1 rounded-full bg-accent-tint px-2 py-0.5 text-accent-ink font-medium">
-                <Check size={10} strokeWidth={2.5} /> synced
+                <AppIcon name="Check" size={10} /> synced
               </span>
             )
           ) : null}

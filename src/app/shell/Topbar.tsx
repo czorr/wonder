@@ -1,20 +1,4 @@
-import {
-  Undo2,
-  Redo2,
-  MousePointer2,
-  Hand,
-  Frame,
-  Square,
-  Type,
-  Sun,
-  ChevronDown,
-  Plus,
-  Minus,
-  Eye,
-  Download,
-  RefreshCcw,
-  Sparkles,
-} from "lucide-react";
+import { AppIcon } from "@/app/icons";
 import { useEffect } from "react";
 import { useCanvas } from "@/store/canvas";
 import { useProject } from "@/store/project";
@@ -162,7 +146,7 @@ export function Topbar() {
               : "text-ink-muted hover:bg-panel-soft hover:text-ink")
           }
         >
-          <Sparkles size={13} strokeWidth={1.75} />
+          <AppIcon name="Sparkles" size={13} />
           Chat
         </button>
         <div className="h-5 w-px bg-stroke" />
@@ -172,27 +156,27 @@ export function Topbar() {
             disabled={pastLen === 0}
             title="Undo (⌘Z)"
           >
-            <Undo2 size={15} strokeWidth={1.75} />
+            <AppIcon name="Undo" size={15} />
           </IconBtn>
           <IconBtn
             onClick={redo}
             disabled={futureLen === 0}
             title="Redo (⌘⇧Z)"
           >
-            <Redo2 size={15} strokeWidth={1.75} />
+            <AppIcon name="Redo" size={15} />
           </IconBtn>
         </div>
         <div className="h-5 w-px bg-stroke" />
         <div className="flex items-center gap-0.5">
           <IconBtn active={tool === "select"} onClick={() => setTool("select")} title="Select (V)">
-            <MousePointer2 size={15} strokeWidth={1.75} />
+            <AppIcon name="Cursor" size={15} />
           </IconBtn>
           <IconBtn active={tool === "hand"} onClick={() => setTool("hand")} title="Hand / Pan (H, hold Space)">
-            <Hand size={15} strokeWidth={1.75} />
+            <AppIcon name="Hand" size={15} />
           </IconBtn>
-          <IconBtn><Frame size={15} strokeWidth={1.75} /></IconBtn>
-          <IconBtn><Square size={15} strokeWidth={1.75} /></IconBtn>
-          <IconBtn><Type size={15} strokeWidth={1.75} /></IconBtn>
+          <IconBtn><AppIcon name="Frame" size={15} /></IconBtn>
+          <IconBtn><AppIcon name="Square" size={15} /></IconBtn>
+          <IconBtn><AppIcon name="Type" size={15} /></IconBtn>
         </div>
       </div>
 
@@ -215,9 +199,9 @@ export function Topbar() {
           </div>
         </div>
         <button className="flex items-center gap-1.5 rounded-lg border border-stroke bg-panel px-2.5 py-1.5 text-[11px] font-medium text-ink-soft">
-          <Sun size={13} strokeWidth={1.75} className="text-ink-muted" />
+          <AppIcon name="Sun" size={13} className="text-ink-muted" />
           Default
-          <ChevronDown size={12} strokeWidth={2} className="text-ink-faint" />
+          <AppIcon name="ChevronDown" size={12} className="text-ink-faint" />
         </button>
       </div>
 
@@ -229,7 +213,7 @@ export function Topbar() {
             title="Zoom out (⌘-)"
             className="grid size-7 place-items-center text-ink-muted hover:text-ink transition"
           >
-            <Minus size={13} strokeWidth={2} />
+            <AppIcon name="Minus" size={13} />
           </button>
           <button
             onClick={zoomReset}
@@ -243,7 +227,7 @@ export function Topbar() {
             title="Zoom in (⌘+)"
             className="grid size-7 place-items-center text-ink-muted hover:text-ink transition"
           >
-            <Plus size={13} strokeWidth={2} />
+            <AppIcon name="Plus" size={13} />
           </button>
         </div>
 
@@ -252,7 +236,7 @@ export function Topbar() {
           title="Reset frame sizes (remove w-[]/h-[] on roots)"
           className="grid size-7 place-items-center rounded-lg border border-stroke bg-panel text-ink-muted hover:text-ink transition"
         >
-          <RefreshCcw size={13} strokeWidth={1.75} />
+          <AppIcon name="Refresh" size={13} />
         </button>
 
         <button
@@ -260,7 +244,7 @@ export function Topbar() {
           title="Preview (⌘P)"
           className="flex items-center gap-1.5 rounded-lg border border-stroke bg-panel px-2.5 py-1.5 text-[11px] font-medium text-ink-soft hover:border-stroke-strong hover:text-ink transition"
         >
-          <Eye size={13} strokeWidth={1.75} />
+          <AppIcon name="Eye" size={13} />
           Preview
         </button>
 
@@ -268,7 +252,7 @@ export function Topbar() {
           onClick={handleExport}
           className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:brightness-105 transition"
         >
-          <Download size={12} strokeWidth={2.5} />
+          <AppIcon name="Download" size={12} />
           Export .tsx
         </button>
       </div>

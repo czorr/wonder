@@ -1,18 +1,4 @@
-import {
-  Search,
-  ChevronDown,
-  ChevronRight,
-  FileCode2,
-  FolderClosed,
-  Plus,
-  Files,
-  Library as LibraryIcon,
-  Boxes,
-  Trash2,
-  Sparkles,
-  FolderMinus,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { AppIcon, type AppIconName } from "@/app/icons";
 import { useEffect, useMemo, useState } from "react";
 import { useProject, type WonderComponent } from "@/store/project";
 import { useCanvas } from "@/store/canvas";
@@ -142,9 +128,9 @@ export function LeftSidebar() {
     >
       {chatOpen ? null : (
         <div className="flex h-9 items-center gap-3 border-b border-stroke px-3 text-[11px] font-medium">
-          <SideTab icon={Files} label="Files" active={tab === "files"} onClick={() => setTab("files")} />
-          <SideTab icon={LibraryIcon} label="Library" active={tab === "library"} onClick={() => setTab("library")} />
-          <SideTab icon={Boxes} label="Assets" active={tab === "assets"} onClick={() => setTab("assets")} />
+          <SideTab icon="Files" label="Files" active={tab === "files"} onClick={() => setTab("files")} />
+          <SideTab icon="Library" label="Library" active={tab === "library"} onClick={() => setTab("library")} />
+          <SideTab icon="Boxes" label="Assets" active={tab === "assets"} onClick={() => setTab("assets")} />
         </div>
       )}
 
@@ -178,7 +164,7 @@ export function LeftSidebar() {
                   }}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-ink-soft hover:bg-panel-soft"
                 >
-                  <FolderMinus size={12} strokeWidth={1.75} className="text-ink-faint" />
+                  <AppIcon name="FolderMinus" size={12} className="text-ink-faint" />
                   Remove from primitives
                 </button>
               ) : (
@@ -189,7 +175,7 @@ export function LeftSidebar() {
                   }}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-ink-soft hover:bg-panel-soft"
                 >
-                  <Sparkles size={12} strokeWidth={1.75} className="text-accent" />
+                  <AppIcon name="Sparkles" size={12} className="text-accent" />
                   Promote to primitive
                 </button>
               )
@@ -202,7 +188,7 @@ export function LeftSidebar() {
               }}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-red-600 hover:bg-red-50"
             >
-              <Trash2 size={12} strokeWidth={1.75} />
+              <AppIcon name="Trash" size={12} />
               Delete component
             </button>
           </div>
@@ -236,7 +222,7 @@ function FilesPanel({
     <>
       <div className="px-3 pt-3">
         <div className="flex items-center gap-2 rounded-md border border-stroke bg-panel-soft px-2 py-1.5">
-          <Search size={12} className="text-ink-faint" strokeWidth={2} />
+          <AppIcon name="Search" size={12} className="text-ink-faint" />
           <input
             placeholder="Search components..."
             className="flex-1 bg-transparent text-[11px] text-ink placeholder:text-ink-faint outline-none"
@@ -257,7 +243,7 @@ function FilesPanel({
             title="New component"
             className="grid size-5 place-items-center rounded text-ink-faint hover:bg-panel-soft hover:text-ink-muted"
           >
-            <Plus size={11} strokeWidth={2} />
+            <AppIcon name="Plus" size={11} />
           </button>
         </div>
 
@@ -304,12 +290,12 @@ function FilesPanel({
 }
 
 function SideTab({
-  icon: Icon,
+  icon,
   label,
   active,
   onClick,
 }: {
-  icon: LucideIcon;
+  icon: AppIconName;
   label: string;
   active?: boolean;
   onClick?: () => void;
@@ -324,7 +310,7 @@ function SideTab({
           : "border-transparent text-ink-muted hover:text-ink")
       }
     >
-      <Icon size={12} strokeWidth={1.75} />
+      <AppIcon name={icon} size={12} />
       {label}
     </button>
   );
@@ -345,18 +331,18 @@ function TreeFolder({
   children?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(true);
-  const Chevron = open ? ChevronDown : ChevronRight;
-  const Icon = primitive ? Sparkles : FolderClosed;
+  const chevronName: AppIconName = open ? "ChevronDown" : "ChevronRight";
+  const iconName: AppIconName = primitive ? "Sparkles" : "Folder";
   return (
     <div>
       <button
         onClick={() => setOpen((o) => !o)}
         className="group flex w-full items-center gap-1 rounded-md px-1.5 py-1 hover:bg-panel-soft"
       >
-        <Chevron size={12} strokeWidth={2} className="text-ink-faint" />
-        <Icon
+        <AppIcon name={chevronName} size={12} className="text-ink-faint" />
+        <AppIcon
+          name={iconName}
           size={13}
-          strokeWidth={1.75}
           className={primitive ? "text-accent" : "text-ink-muted"}
         />
         <span
@@ -399,9 +385,9 @@ function TreeFile({
           : "text-ink-soft hover:bg-panel-soft")
       }
     >
-      <FileCode2
+      <AppIcon
+        name="FileCode"
         size={13}
-        strokeWidth={1.75}
         className={active ? "text-accent" : "text-ink-faint"}
       />
       <span className="flex-1 text-left">{label}</span>
@@ -416,12 +402,12 @@ function TreeFile({
 }
 
 function PrimitiveCard({
-  icon: Icon,
+  icon,
   label,
   primitive,
   onClick,
 }: {
-  icon: LucideIcon;
+  icon: AppIconName;
   label: string;
   primitive: Primitive;
   onClick?: () => void;
@@ -459,7 +445,7 @@ function PrimitiveCard({
       onClick={onClick}
       className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-md border border-stroke bg-panel hover:border-stroke-strong hover:bg-panel-soft active:cursor-grabbing"
     >
-      <Icon size={16} strokeWidth={1.5} className="text-ink-soft" />
+      <AppIcon name={icon} size={16} className="text-ink-soft" />
       <span className="text-[10px] text-ink-muted">{label}</span>
     </button>
   );

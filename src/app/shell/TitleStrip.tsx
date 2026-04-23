@@ -1,14 +1,4 @@
-import {
-  Share2,
-  MessageSquare,
-  ChevronDown,
-  FilePlus2,
-  FolderOpen,
-  Save,
-  SaveAll,
-  Download,
-  Clock,
-} from "lucide-react";
+import { AppIcon } from "@/app/icons";
 import { useEffect, useState } from "react";
 import { useProject } from "@/store/project";
 import {
@@ -71,7 +61,7 @@ export function TitleStrip() {
               title="Unsaved changes"
             />
           ) : null}
-          <ChevronDown size={11} strokeWidth={2} className="text-ink-faint" />
+          <AppIcon name="ChevronDown" size={11} className="text-ink-faint" />
         </button>
 
         {activeFilename ? (
@@ -84,10 +74,10 @@ export function TitleStrip() {
 
       <div className="flex shrink-0 items-center gap-0.5 pr-3">
         <button className="grid size-7 place-items-center rounded-md text-ink-muted hover:bg-panel-soft">
-          <Share2 size={14} strokeWidth={1.75} />
+          <AppIcon name="Share" size={14} />
         </button>
         <button className="grid size-7 place-items-center rounded-md text-ink-muted hover:bg-panel-soft">
-          <MessageSquare size={14} strokeWidth={1.75} />
+          <AppIcon name="Message" size={14} />
         </button>
       </div>
 
@@ -161,13 +151,13 @@ function FileMenu({ onClose }: { onClose: () => void }) {
       onMouseDown={(e) => e.stopPropagation()}
     >
       <MenuItem
-        icon={<FilePlus2 size={13} strokeWidth={1.75} />}
+        icon={<AppIcon name="FileNew" size={13} />}
         label="New Project"
         shortcut="⌘N"
         onClick={run(actionNewProject)}
       />
       <MenuItem
-        icon={<FolderOpen size={13} strokeWidth={1.75} />}
+        icon={<AppIcon name="FolderOpen" size={13} />}
         label="Open Project…"
         shortcut="⌘O"
         onClick={run(actionOpenProject)}
@@ -181,14 +171,14 @@ function FileMenu({ onClose }: { onClose: () => void }) {
       <Divider />
 
       <MenuItem
-        icon={<Save size={13} strokeWidth={1.75} />}
+        icon={<AppIcon name="Save" size={13} />}
         label="Save"
         shortcut="⌘S"
         disabled={hasPath && !dirty}
         onClick={run(actionSave)}
       />
       <MenuItem
-        icon={<SaveAll size={13} strokeWidth={1.75} />}
+        icon={<AppIcon name="SaveAll" size={13} />}
         label="Save As…"
         shortcut="⌘⇧S"
         onClick={run(actionSaveAs)}
@@ -197,7 +187,7 @@ function FileMenu({ onClose }: { onClose: () => void }) {
       <Divider />
 
       <MenuItem
-        icon={<Download size={13} strokeWidth={1.75} />}
+        icon={<AppIcon name="Download" size={13} />}
         label="Export current .tsx"
         disabled={!activeTab}
         onClick={run(exportCurrent)}
@@ -217,7 +207,7 @@ function RecentsSubmenu({
   return (
     <div className="border-b border-stroke pb-1">
       <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
-        <Clock size={10} strokeWidth={2} />
+        <AppIcon name="Clock" size={10} />
         Recent
       </div>
       {recents.slice(0, 8).map((r) => (

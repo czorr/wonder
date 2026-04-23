@@ -15,7 +15,7 @@
 // ---------------------------------------------------------------------------
 
 import { useMemo, useState, useEffect } from "react";
-import { Sparkles, X, ArrowRight, CircleSlash } from "lucide-react";
+import { AppIcon } from "@/app/icons";
 import { useProject } from "@/store/project";
 import {
   applyExtraction,
@@ -108,7 +108,7 @@ export function ExtractDesignSystemModal({ onClose }: Props) {
       >
         <div className="flex items-center justify-between border-b border-stroke px-4 py-3">
           <div className="flex items-center gap-2">
-            <Sparkles size={14} strokeWidth={1.75} className="text-accent" />
+            <AppIcon name="Sparkles" size={14} className="text-accent" />
             <span className="text-[13px] font-semibold text-ink">
               Extract design system from components
             </span>
@@ -117,7 +117,7 @@ export function ExtractDesignSystemModal({ onClose }: Props) {
             onClick={onClose}
             className="grid size-6 place-items-center rounded-md text-ink-muted hover:bg-panel-soft hover:text-ink"
           >
-            <X size={14} strokeWidth={1.75} />
+            <AppIcon name="X" size={14} />
           </button>
         </div>
 
@@ -313,7 +313,7 @@ function ColorRow({
         {rewritePreview ? (
           <div className="flex items-center gap-1 font-mono text-[10px]">
             <span className="text-ink-muted">bg-{color.paletteName}</span>
-            <ArrowRight size={10} className="text-ink-faint" strokeWidth={2} />
+            <AppIcon name="ArrowRight" size={10} className="text-ink-faint" />
             <span className="rounded bg-accent-tint px-1 py-0.5 text-accent-ink">
               bg-
               {assignment!.shade === "DEFAULT"
@@ -323,7 +323,7 @@ function ColorRow({
           </div>
         ) : (
           <span className="flex items-center gap-1 text-[10px] text-ink-faint">
-            <CircleSlash size={10} strokeWidth={2} /> leave as-is
+            <AppIcon name="CircleSlash" size={10} /> leave as-is
           </span>
         )}
       </td>

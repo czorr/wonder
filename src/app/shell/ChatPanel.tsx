@@ -1,16 +1,4 @@
-import {
-  AtSign,
-  ChevronDown,
-  Loader2,
-  Plus,
-  Send,
-  Settings,
-  Sparkles,
-  Square,
-  Trash2,
-  MessageSquare,
-  X,
-} from "lucide-react";
+import { AppIcon } from "@/app/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@/store/chat";
 import { useProject } from "@/store/project";
@@ -48,13 +36,13 @@ export function ChatPanel() {
         <SessionDropdown />
         <div className="flex-1" />
         <IconBtn title="New chat" onClick={() => newSession()}>
-          <Plus size={13} strokeWidth={1.75} />
+          <AppIcon name="Plus" size={13} />
         </IconBtn>
         <IconBtn title="Chat settings" onClick={openSettings}>
-          <Settings size={13} strokeWidth={1.75} />
+          <AppIcon name="Settings" size={13} />
         </IconBtn>
         <IconBtn title="Close chat (⌘L)" onClick={() => setChatOpen(false)}>
-          <X size={13} strokeWidth={1.75} />
+          <AppIcon name="X" size={13} />
         </IconBtn>
       </div>
 
@@ -99,9 +87,9 @@ function SessionDropdown() {
         className="flex max-w-[220px] items-center gap-1.5 rounded-md px-1.5 py-1 text-[12px] font-medium text-ink hover:bg-panel-soft"
         title={label}
       >
-        <MessageSquare size={11} strokeWidth={1.75} className="text-ink-muted" />
+        <AppIcon name="Message" size={11} className="text-ink-muted" />
         <span className="truncate">{label}</span>
-        <ChevronDown size={10} strokeWidth={2} className="text-ink-faint" />
+        <AppIcon name="ChevronDown" size={10} className="text-ink-faint" />
       </button>
       {open ? (
         <div className="absolute left-0 top-full z-30 mt-1 max-h-[280px] w-[260px] overflow-y-auto rounded-xl border border-stroke bg-white py-1 shadow-lg">
@@ -137,7 +125,7 @@ function SessionDropdown() {
                     title="Delete chat"
                     className="hidden size-5 place-items-center rounded text-ink-faint hover:bg-red-50 hover:text-red-600 group-hover:grid"
                   >
-                    <Trash2 size={11} strokeWidth={1.75} />
+                    <AppIcon name="Trash" size={11} />
                   </button>
                 </div>
               );
@@ -168,7 +156,7 @@ function MessageList({ session }: { session: Session | null }) {
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
         <div className="grid size-11 place-items-center rounded-full bg-accent-tint text-accent">
-          <Sparkles size={18} strokeWidth={1.75} />
+          <AppIcon name="Sparkles" size={18} />
         </div>
         <div className="flex flex-col gap-1">
           <div className="text-[13px] font-semibold text-ink">Ask anything</div>
@@ -305,7 +293,7 @@ function ChatInput({ session }: { session: Session | null }) {
         {/* Status chip — only while streaming */}
         {streaming ? (
           <div className="flex items-center gap-1.5 self-start rounded-full bg-accent-tint px-2 py-0.5 text-[10.5px] font-medium text-accent">
-            <Loader2 size={10} strokeWidth={2.25} className="animate-spin" />
+            <AppIcon name="Loader" size={10} className="animate-spin" />
             {statusText}
           </div>
         ) : null}
@@ -319,7 +307,7 @@ function ChatInput({ session }: { session: Session | null }) {
                 className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent-tint px-1.5 py-0.5 text-[10.5px] font-medium text-accent-ink"
                 title={`Scoped: ${t.name}`}
               >
-                <AtSign size={9} strokeWidth={2.25} />
+                <AppIcon name="AtSign" size={9} />
                 {t.name}
                 <button
                   onClick={(e) => {
@@ -329,7 +317,7 @@ function ChatInput({ session }: { session: Session | null }) {
                   className="grid size-3.5 place-items-center rounded-full text-accent-ink/70 hover:bg-accent/15 hover:text-accent-ink"
                   title="Remove"
                 >
-                  <X size={8} strokeWidth={2.5} />
+                  <AppIcon name="X" size={8} />
                 </button>
               </span>
             ))}
@@ -361,7 +349,7 @@ function ChatInput({ session }: { session: Session | null }) {
               title="Stop"
               className="grid size-8 place-items-center rounded-full bg-ink text-white transition hover:brightness-110"
             >
-              <Square size={11} strokeWidth={2.5} />
+              <AppIcon name="Square" size={11} />
             </button>
           ) : (
             <button
@@ -375,7 +363,7 @@ function ChatInput({ session }: { session: Session | null }) {
                   : "bg-panel-soft text-ink-faint cursor-not-allowed")
               }
             >
-              <Send size={12} strokeWidth={2} className="-ml-0.5" />
+              <AppIcon name="Send" size={12} className="-ml-0.5" />
             </button>
           )}
         </div>
@@ -435,7 +423,7 @@ function AtPicker() {
         className="grid size-7 place-items-center rounded-full border border-stroke bg-white text-ink-soft transition hover:bg-panel-soft"
         title="Tag a component for the agent to scope this message to"
       >
-        <AtSign size={11} strokeWidth={1.75} />
+        <AppIcon name="AtSign" size={11} />
       </button>
       {open ? (
         <div className="absolute bottom-full left-0 z-30 mb-1.5 w-[240px] overflow-hidden rounded-xl border border-stroke bg-white shadow-lg">
@@ -469,9 +457,9 @@ function AtPicker() {
                       (already ? "text-ink-faint" : "text-ink")
                     }
                   >
-                    <AtSign
+                    <AppIcon
+                      name="AtSign"
                       size={10}
-                      strokeWidth={1.75}
                       className={already ? "text-ink-faint" : "text-accent"}
                     />
                     <span className="flex-1 truncate">{c.name}</span>
@@ -525,9 +513,9 @@ function ModelChip() {
         className="flex items-center gap-1 rounded-full border border-stroke bg-white px-2 py-1 text-[11px] font-medium text-ink-soft transition hover:bg-panel-soft"
         title={current.description}
       >
-        <Sparkles size={10} strokeWidth={1.75} className="text-accent" />
+        <AppIcon name="Sparkles" size={10} className="text-accent" />
         {current.label}
-        <ChevronDown size={9} strokeWidth={2} className="text-ink-faint" />
+        <AppIcon name="ChevronDown" size={9} className="text-ink-faint" />
       </button>
       {open ? (
         <div className="absolute bottom-full left-0 z-30 mb-1.5 w-[240px] rounded-xl border border-stroke bg-white py-1 shadow-lg">
