@@ -141,7 +141,7 @@ export const ICON_MAP = {
   AtSign: "mingcute:at-line",
 
   // — Status / misc —
-  Sparkles: "mingcute:sparkles-line",
+  Sparkles: "mingcute:paint-brush-ai-line",
   Sun: "mingcute:sun-line",
   GitBranch: "mingcute:git-branch-line",
   Clock: "mingcute:time-line",
@@ -154,6 +154,10 @@ export const ICON_MAP = {
   CircleSlash: "mingcute:forbid-circle-line",
   User: "mingcute:user-3-line",
   LogOut: "mingcute:exit-line",
+
+  // — AI providers — brand marks used in the model picker and settings.
+  OpenAI: "mingcute:openai-line",
+  Anthropic: "mingcute:claude-line",
 } as const;
 
 export type AppIconName = keyof typeof ICON_MAP;

@@ -13,6 +13,7 @@ export { buildProjectContext, type ProjectContext } from "./context";
 export { buildSystemPrompt } from "./systemPrompt";
 export {
   PROVIDERS,
+  PROVIDER_ICON,
   allModels,
   providerForModel,
   resolveLanguageModel,

@@ -86,6 +86,16 @@ export const PROVIDERS: Record<ProviderId, ProviderDef> = {
   },
 };
 
+/**
+ * Provider → app icon name (see `src/app/icons.tsx`). Centralised here so the
+ * model picker, settings, and any future surface all pick up the same brand
+ * mark without hard-coding icon names at each call site.
+ */
+export const PROVIDER_ICON: Record<ProviderId, "OpenAI" | "Anthropic"> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+};
+
 /** Flattened list of every model across enabled providers. */
 export function allModels(): ModelConfig[] {
   return Object.values(PROVIDERS)

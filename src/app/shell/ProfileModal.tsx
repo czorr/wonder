@@ -1,7 +1,7 @@
 import { AppIcon, type AppIconName } from "@/app/icons";
 import { useEffect, useMemo, useState } from "react";
 import { useChat } from "@/store/chat";
-import { PROVIDERS, allModels, type ProviderId } from "@/agent";
+import { PROVIDERS, PROVIDER_ICON, allModels, type ProviderId } from "@/agent";
 import { loadApiKey, saveApiKey } from "@/chat/secrets";
 
 // ---------------------------------------------------------------------------
@@ -169,11 +169,14 @@ function Row({
 function BlockRow({
   label,
   helper,
+  icon,
   trailing,
   children,
 }: {
   label: string;
   helper?: string;
+  /** Optional app-icon rendered before the label (e.g. provider brand mark). */
+  icon?: AppIconName;
   /** Right-aligned content that sits next to the label (badges, status). */
   trailing?: React.ReactNode;
   /** Full-width content that renders BELOW the label row. */
@@ -182,6 +185,11 @@ function BlockRow({
   return (
     <div className="border-b border-stroke py-4 last:border-b-0">
       <div className="flex items-center gap-4">
+        {icon ? (
+          <div className="grid size-8 shrink-0 place-items-center rounded-md border border-stroke bg-white text-ink">
+            <AppIcon name={icon} size={16} />
+          </div>
+        ) : null}
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-[12.5px] font-medium text-ink">{label}</span>
           {helper ? (
@@ -294,12 +302,17 @@ function AISection() {
                   onClick={() => selectModel(m.provider, m.id)}
                   title={m.description}
                   className={
-                    "rounded-md border px-2 py-1 text-[11.5px] font-medium transition " +
+                    "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11.5px] font-medium transition " +
                     (active
                       ? "border-accent bg-accent-tint text-accent"
                       : "border-stroke bg-white text-ink-soft hover:bg-panel-soft")
                   }
                 >
+                  <AppIcon
+                    name={PROVIDER_ICON[m.provider]}
+                    size={13}
+                    className={active ? "text-accent" : "text-ink"}
+                  />
                   {m.label}
                 </button>
               );
@@ -401,6 +414,7 @@ function ProviderBlock({ providerId }: { providerId: ProviderId }) {
     <BlockRow
       label={provider.label}
       helper={provider.tagline ?? undefined}
+      icon={PROVIDER_ICON[providerId]}
       trailing={trailing}
     >
       {disabled ? null : (

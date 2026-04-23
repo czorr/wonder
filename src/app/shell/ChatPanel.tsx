@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@/store/chat";
 import { useProject } from "@/store/project";
 import { useLayout } from "@/store/layout";
-import { allModels } from "@/agent";
+import { allModels, PROVIDER_ICON } from "@/agent";
 import type { Message, Session } from "@/chat/types";
 
 /**
@@ -19,9 +19,7 @@ import type { Message, Session } from "@/chat/types";
 export function ChatPanel() {
   const sessions = useChat((s) => s.sessions);
   const activeSessionId = useChat((s) => s.activeSessionId);
-  const openProfile = useChat((s) => s.openProfile);
   const newSession = useChat((s) => s.newSession);
-  const setChatOpen = useChat((s) => s.setChatOpen);
   const collapseLeft = useLayout((s) => s.toggleLeft);
 
   const activeSession = useMemo(
@@ -31,25 +29,18 @@ export function ChatPanel() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-panel">
-      {/* Header */}
+      {/* Header — session dropdown + new chat + collapse.
+          Settings and "close chat" were removed: settings live in the
+          unified Profile modal (TitleStrip avatar) which is the single
+          entry point, and closing the chat is now handled by the tab
+          strip in LeftSidebar (switch back to Files). */}
       <div className="flex h-10 shrink-0 items-center gap-1 px-2">
         <SessionDropdown />
         <div className="flex-1" />
         <IconBtn title="New chat" onClick={() => newSession()}>
           <AppIcon name="Plus" size={13} />
         </IconBtn>
-        {/* Settings live in the unified Profile modal (TitleStrip avatar).
-            We keep the cog here as an affordance from inside the chat, but
-            it opens the same modal so there is a single place for keys,
-            models, and account. */}
-        <IconBtn title="AI settings (opens profile)" onClick={openProfile}>
-          <AppIcon name="Settings" size={13} />
-        </IconBtn>
-        <IconBtn title="Close chat (⌘L)" onClick={() => setChatOpen(false)}>
-          <AppIcon name="X" size={13} />
-        </IconBtn>
-        {/* Collapse the whole sidebar — distinct from closing chat. Closing
-            chat returns to Files view; collapsing hides the panel entirely. */}
+        {/* Collapse the whole sidebar. */}
         <IconBtn title="Collapse panel (⌘\)" onClick={collapseLeft}>
           <AppIcon name="ChevronLeft" size={13} />
         </IconBtn>
@@ -514,15 +505,15 @@ function ModelChip() {
     <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1 rounded-full border border-stroke bg-white px-2 py-1 text-[11px] font-medium text-ink-soft transition hover:bg-panel-soft"
+        className="flex items-center gap-1.5 rounded-full border border-stroke bg-white px-2 py-1 text-[11px] font-medium text-ink-soft transition hover:bg-panel-soft"
         title={current.description}
       >
-        <AppIcon name="Sparkles" size={10} className="text-accent" />
+        <AppIcon name={PROVIDER_ICON[current.provider]} size={12} className="text-ink" />
         {current.label}
         <AppIcon name="ChevronDown" size={9} className="text-ink-faint" />
       </button>
       {open ? (
-        <div className="absolute bottom-full left-0 z-30 mb-1.5 w-[240px] rounded-xl border border-stroke bg-white py-1 shadow-lg">
+        <div className="absolute bottom-full left-0 z-30 mb-1.5 w-[260px] rounded-xl border border-stroke bg-white py-1 shadow-lg">
           {models.map((m) => (
             <button
               key={m.id}
@@ -531,14 +522,21 @@ function ModelChip() {
                 setOpen(false);
               }}
               className={
-                "flex w-full flex-col items-start px-3 py-1.5 text-left text-[12px] hover:bg-panel-soft " +
+                "flex w-full items-start gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-panel-soft " +
                 (m.id === selectedModel ? "bg-panel-soft" : "")
               }
             >
-              <span className="font-medium text-ink">{m.label}</span>
-              {m.description ? (
-                <span className="text-[10px] text-ink-faint">{m.description}</span>
-              ) : null}
+              <AppIcon
+                name={PROVIDER_ICON[m.provider]}
+                size={14}
+                className="mt-0.5 shrink-0 text-ink"
+              />
+              <div className="flex min-w-0 flex-col">
+                <span className="font-medium text-ink">{m.label}</span>
+                {m.description ? (
+                  <span className="text-[10px] text-ink-faint">{m.description}</span>
+                ) : null}
+              </div>
             </button>
           ))}
         </div>
