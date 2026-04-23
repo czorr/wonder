@@ -1,4 +1,5 @@
 import {
+  AtSign,
   ChevronDown,
   Loader2,
   Plus,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@/store/chat";
+import { useProject } from "@/store/project";
 import { allModels } from "@/agent";
 import { ChatSettingsModal } from "@/app/shell/ChatSettingsModal";
 import type { Message, Session } from "@/chat/types";
@@ -238,6 +240,8 @@ function ChatInput({ session }: { session: Session | null }) {
   const streaming = useChat((s) => s.streaming);
   const stop = useChat((s) => s.stop);
   const focusRequestId = useChat((s) => s.focusRequestId);
+  const composerTags = useChat((s) => s.composerTags);
+  const removeComposerTag = useChat((s) => s.removeComposerTag);
 
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
@@ -306,6 +310,32 @@ function ChatInput({ session }: { session: Session | null }) {
           </div>
         ) : null}
 
+        {/* Scope chips — components the user tagged for this turn */}
+        {composerTags.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1">
+            {composerTags.map((t) => (
+              <span
+                key={t.id}
+                className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent-tint px-1.5 py-0.5 text-[10.5px] font-medium text-accent-ink"
+                title={`Scoped: ${t.name}`}
+              >
+                <AtSign size={9} strokeWidth={2.25} />
+                {t.name}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeComposerTag(t.id);
+                  }}
+                  className="grid size-3.5 place-items-center rounded-full text-accent-ink/70 hover:bg-accent/15 hover:text-accent-ink"
+                  title="Remove"
+                >
+                  <X size={8} strokeWidth={2.5} />
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
+
         {/* Textarea */}
         <textarea
           ref={ref}
@@ -320,8 +350,9 @@ function ChatInput({ session }: { session: Session | null }) {
           className="max-h-[160px] w-full resize-none bg-transparent text-[12.5px] leading-[1.5] text-ink placeholder:text-ink-faint outline-none"
         />
 
-        {/* Footer: model chip + send */}
+        {/* Footer: @picker + model chip + send */}
         <div className="flex items-center gap-1.5">
+          <AtPicker />
           <ModelChip />
           <div className="flex-1" />
           {streaming ? (
@@ -352,6 +383,108 @@ function ChatInput({ session }: { session: Session | null }) {
       <div className="mt-1.5 text-center text-[10px] text-ink-faint">
         AI can make mistakes. Press ⌘Z to undo any edit.
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// @ picker (inline in composer footer)
+//
+// Opens a dropdown of the project's components so the user can tag one (or
+// more) as the scope for the next message. Tagged components are locked on
+// the canvas (pixel-grid overlay) for the full turn — see `useChat.busyComponents`.
+//
+// Dropdown opens upward (`bottom-full`) because it sits at the bottom of the
+// sidebar. Components already in the tag strip are shown as "added" but
+// clicking one again is a no-op thanks to the store's dedupe.
+// ---------------------------------------------------------------------------
+
+function AtPicker() {
+  const components = useProject((s) => s.components);
+  const order = useProject((s) => s.order);
+  const composerTags = useChat((s) => s.composerTags);
+  const addComposerTag = useChat((s) => s.addComposerTag);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const tagged = useMemo(
+    () => new Set(composerTags.map((t) => t.id)),
+    [composerTags],
+  );
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = order
+      .map((id) => components[id])
+      .filter((c): c is NonNullable<typeof c> => !!c);
+    if (!q) return list;
+    return list.filter((c) => c.name.toLowerCase().includes(q));
+  }, [order, components, query]);
+
+  return (
+    <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="grid size-7 place-items-center rounded-full border border-stroke bg-white text-ink-soft transition hover:bg-panel-soft"
+        title="Tag a component for the agent to scope this message to"
+      >
+        <AtSign size={11} strokeWidth={1.75} />
+      </button>
+      {open ? (
+        <div className="absolute bottom-full left-0 z-30 mb-1.5 w-[240px] overflow-hidden rounded-xl border border-stroke bg-white shadow-lg">
+          <div className="border-b border-stroke p-1.5">
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search components…"
+              className="w-full rounded-md bg-panel-soft px-2 py-1 text-[11.5px] text-ink placeholder:text-ink-faint outline-none"
+            />
+          </div>
+          <div className="max-h-[220px] overflow-y-auto py-1">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-[11px] text-ink-faint">
+                No components match.
+              </div>
+            ) : (
+              filtered.map((c) => {
+                const already = tagged.has(c.id);
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => {
+                      if (!already) addComposerTag(c.id);
+                      setOpen(false);
+                      setQuery("");
+                    }}
+                    className={
+                      "flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-[12px] transition hover:bg-panel-soft " +
+                      (already ? "text-ink-faint" : "text-ink")
+                    }
+                  >
+                    <AtSign
+                      size={10}
+                      strokeWidth={1.75}
+                      className={already ? "text-ink-faint" : "text-accent"}
+                    />
+                    <span className="flex-1 truncate">{c.name}</span>
+                    {already ? (
+                      <span className="text-[10px] text-ink-faint">added</span>
+                    ) : null}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

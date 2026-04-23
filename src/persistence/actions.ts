@@ -11,6 +11,7 @@ import {
 } from "./fs";
 import { addRecentProject, removeRecentProject } from "./appState";
 import { ProjectFileError } from "./migrate";
+import { PROJECT_FILE_VERSION } from "./types";
 
 // ---------------------------------------------------------------------------
 // Discard confirmation — central helper so every flow that replaces the
@@ -69,6 +70,12 @@ export async function actionOpenProject(): Promise<void> {
  * Load a project from a specific folder path. Used by Open dialog, Open
  * Recent, and bootstrap. Handles errors with a dialog and cleans the
  * recents list if the folder is no longer a valid Wonder project.
+ *
+ * Upgrade flow: when the project on disk is an older schema version, we
+ * show an explicit "Upgrade?" prompt (Xcode-style) BEFORE loading into the
+ * store. On confirm, the project opens AND auto-saves so the on-disk
+ * layout catches up — otherwise the user would have to remember to save
+ * for the upgrade to stick.
  */
 export async function loadProjectFromPath(path: string): Promise<boolean> {
   const store = useProject.getState();
@@ -84,6 +91,13 @@ export async function loadProjectFromPath(path: string): Promise<boolean> {
     }
 
     const loaded = await openProject(path);
+    const needsUpgrade = loaded.onDiskVersion < PROJECT_FILE_VERSION;
+
+    if (needsUpgrade) {
+      const ok = await confirmUpgrade(loaded.onDiskVersion, loaded.meta.name);
+      if (!ok) return false;
+    }
+
     useProject.getState().replaceProject({
       path,
       name: loaded.meta.name,
@@ -92,12 +106,26 @@ export async function loadProjectFromPath(path: string): Promise<boolean> {
       order: loaded.order,
       propValues: loaded.meta.propValues,
       selection: loaded.meta.selection,
+      tokens: loaded.tokens,
     });
     // Restore canvas view from the file (persisted with the project).
     useCanvas.getState().setZoom(loaded.meta.canvas.zoom);
     useCanvas.getState().setPan(loaded.meta.canvas.pan);
 
     await addRecentProject({ path, name: loaded.meta.name });
+
+    // Post-upgrade: persist the new layout immediately so the on-disk
+    // format matches what's now in memory. If this fails, the project is
+    // still usable — the user can retry with manual save.
+    if (needsUpgrade) {
+      const saved = await writeToPath(path, loaded.meta.name);
+      if (!saved) {
+        console.warn(
+          "[wonder] upgraded project loaded but auto-save failed; " +
+            "save manually to persist v2 layout.",
+        );
+      }
+    }
     return true;
   } catch (err) {
     const msg =
@@ -111,6 +139,35 @@ export async function loadProjectFromPath(path: string): Promise<boolean> {
   } finally {
     useProject.getState().setLoading(false);
   }
+}
+
+/**
+ * Confirmation dialog shown when an older-schema project is opened.
+ * Describes what the upgrade does so the user can decide informedly.
+ * The upgrade is non-destructive in v1→v2 (we only strip a never-used
+ * field and add new files), so we frame it as safe.
+ */
+async function confirmUpgrade(
+  fromVersion: number,
+  projectName: string,
+): Promise<boolean> {
+  return ask(
+    `"${projectName}" was created with an older Wonder format ` +
+      `(v${fromVersion}).\n\n` +
+      `Upgrade to v${PROJECT_FILE_VERSION}? This will:\n` +
+      `  • Add design/tokens.json (your project's color + font system)\n` +
+      `  • Add design/tokens.css (auto-generated from tokens.json)\n` +
+      `  • Create .wonder/ for runtime data (chat history, caches)\n` +
+      `  • Bump wonder.json to v${PROJECT_FILE_VERSION}\n\n` +
+      `Nothing is lost — the upgrade is additive, and you can hand-edit ` +
+      `any of the new files. The change is written to disk immediately.`,
+    {
+      title: "Upgrade project format",
+      kind: "info",
+      okLabel: "Upgrade",
+      cancelLabel: "Cancel",
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +235,7 @@ async function writeToPath(path: string, name: string): Promise<boolean> {
         openTabs: store.openTabs,
         activeTab: store.activeTab,
       },
+      tokens: store.tokens,
     });
     // Post-save cleanup: delete .tsx files that no longer exist in the manifest.
     await pruneOrphans({

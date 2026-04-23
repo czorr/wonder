@@ -40,6 +40,7 @@ import {
 } from "react";
 import { useProject } from "@/store/project";
 import { useMetrics } from "@/store/metrics";
+import { DesignSystemPanel } from "./DesignSystemPanel";
 import {
   getClassNameAtPath,
   setClassAtPath,
@@ -311,12 +312,15 @@ export function RightPanel() {
         <PanelTab icon={Layers} label="Layers" active={panel === "layers"} onClick={() => setPanel("layers")} />
       </div>
 
+      {component ? (
       <div className="flex items-center gap-1 border-b border-stroke px-3 py-2 text-[10.5px] text-ink-muted">
-        <span>{component?.name ?? "—"}</span>
+        <span>{component.name}</span>
         <ChevronRight size={10} className="text-ink-faint" strokeWidth={2} />
         <span className="font-mono text-[10px] text-ink-faint">{path}</span>
       </div>
+      ) : null}
 
+      {component ? (
       <div className="flex items-center gap-1 border-b border-stroke px-3 py-1.5">
         {STATE_TABS.map((s) => {
           const active = s === state;
@@ -342,6 +346,7 @@ export function RightPanel() {
           );
         })}
       </div>
+      ) : null}
 
       <div
         className={"flex-1 overflow-auto " + (state !== "base" ? "[&_.wnd-field]:!bg-emerald-50 [&_.wnd-field]:!border-emerald-300 [&_input]:!bg-transparent [&_input]:!text-emerald-900" : "")}
@@ -354,7 +359,8 @@ export function RightPanel() {
             setValue={(name, val) => setPropValue(component.id, name, val)}
           />
         ) : null}
-        {panel === "design" ? (
+        {panel === "design" && !component ? <DesignSystemPanel /> : null}
+        {panel === "design" && component ? (
         <>
         <Group
           title="Layout"

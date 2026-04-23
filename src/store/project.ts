@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { defaultTokens, tokensEqual, type Tokens } from "@/project/tokens";
 
 export type ComponentId = string;
 
@@ -17,10 +18,14 @@ export type WonderComponent = {
 // A "document snapshot" is the subset of state that undo/redo reverts.
 // Selection, open tabs, and active tab are UI state — we don't time-travel
 // them because it's confusing (you'd lose your current focus for a typo fix).
+//
+// Tokens ARE in the snapshot: editing the design system is a meaningful
+// document mutation, and "undo this color change" is a flow users expect.
 type DocSnapshot = {
   components: Record<ComponentId, WonderComponent>;
   order: ComponentId[];
   propValues: Record<ComponentId, Record<string, string>>;
+  tokens: Tokens;
 };
 
 // Kinds of mutations we push into history. Used for coalescing — a burst of
@@ -32,7 +37,10 @@ type HistoryKind =
   | "addComponent"
   | "deleteComponent"
   | "setPropValue"
-  | "clearPropValue";
+  | "clearPropValue"
+  | "setTokens"
+  | "applyExtraction"
+  | "setFolder";
 
 type HistoryEntry = { snapshot: DocSnapshot; kind: HistoryKind; at: number };
 
@@ -69,6 +77,13 @@ type State = {
   activeTab: ComponentId | null;
   propValues: Record<ComponentId, Record<string, string>>;
 
+  /**
+   * Design system tokens. Persisted to `<project>/design/tokens.json`;
+   * mirrored to `design/tokens.css` for Tailwind v4 `@theme` consumption.
+   * Editable via `updateTokens` — goes through history so undo works.
+   */
+  tokens: Tokens;
+
   // History
   past: HistoryEntry[];
   future: HistoryEntry[];
@@ -88,6 +103,34 @@ type State = {
   clearPropValue: (id: ComponentId, name: string) => void;
   addComponent: (c: Omit<WonderComponent, "id"> & { id?: ComponentId }) => ComponentId;
   deleteComponent: (id: ComponentId) => void;
+  /**
+   * Move a component to a different folder. Used by promote/demote-primitive
+   * actions — changing folder from/to `primitives/*` reclassifies the component
+   * in the primitives index the agent sees. No-ops when the folder is unchanged.
+   */
+  setComponentFolder: (id: ComponentId, folder: string) => void;
+
+  /**
+   * Replace the design system tokens. Accepts either a full Tokens value or
+   * an updater function — the latter is convenient for UI that needs to
+   * patch a single field without rebuilding the whole object.
+   *
+   * No-ops (deep-equal result) skip the history push so idle UI reads
+   * don't flood undo. Coalesced with `COALESCE_MS` so dragging a color
+   * slider collapses into a single history entry.
+   */
+  updateTokens: (next: Tokens | ((prev: Tokens) => Tokens)) => void;
+
+  /**
+   * Atomically write new tokens + rewritten sources in a single history
+   * entry. Used by the design-system extraction flow — undo rolls BOTH the
+   * token edits and the class rewrites together, so the user never ends up
+   * in a half-migrated state.
+   */
+  applyDesignSystemExtraction: (args: {
+    tokens: Tokens;
+    sources: Record<ComponentId, string>;
+  }) => void;
 
   undo: () => void;
   redo: () => void;
@@ -114,6 +157,9 @@ export type ReplaceProjectPayload = {
   components: Record<ComponentId, WonderComponent>;
   order: ComponentId[];
   propValues: Record<ComponentId, Record<string, string>>;
+  /** Design system from disk. Fall-back to defaults if omitted (e.g. brand-new
+   *  project or a read that failed to parse tokens.json). */
+  tokens?: Tokens;
   selection?: {
     componentId: ComponentId | null;
     elementPath: string | null;
@@ -147,6 +193,7 @@ function snapshotOf(s: State): DocSnapshot {
     components: s.components,
     order: s.order,
     propValues: s.propValues,
+    tokens: s.tokens,
   };
 }
 
@@ -287,6 +334,7 @@ export function emptyProjectState(name = "Untitled"): {
   components: Record<ComponentId, WonderComponent>;
   order: ComponentId[];
   propValues: Record<ComponentId, Record<string, string>>;
+  tokens: Tokens;
   meta: ProjectMeta;
   selection: {
     selectedComponentId: ComponentId | null;
@@ -299,6 +347,7 @@ export function emptyProjectState(name = "Untitled"): {
     components: {},
     order: [],
     propValues: {},
+    tokens: defaultTokens(),
     meta: {
       path: null,
       name,
@@ -350,6 +399,9 @@ export const useProject = create<State>((set, get) => {
     openTabs: ["stat-tile"],
     activeTab: "stat-tile",
     propValues: {},
+    // Seed the untitled draft with default tokens so new projects have a
+    // coherent design system from the first keystroke.
+    tokens: defaultTokens(),
     past: [],
     future: [],
     projectMeta: {
@@ -499,6 +551,48 @@ export const useProject = create<State>((set, get) => {
       });
     },
 
+    setComponentFolder(id, folder) {
+      const c = get().components[id];
+      if (!c) return;
+      const normalized = folder.replace(/^\/+|\/+$/g, "");
+      if (c.folder === normalized) return;
+      pushHistory("setFolder");
+      set((s) => ({
+        components: {
+          ...s.components,
+          [id]: { ...s.components[id], folder: normalized },
+        },
+      }));
+    },
+
+    updateTokens(next) {
+      const current = get().tokens;
+      const resolved = typeof next === "function" ? next(current) : next;
+      if (tokensEqual(current, resolved)) return;
+      pushHistory("setTokens");
+      set({ tokens: resolved });
+    },
+
+    applyDesignSystemExtraction({ tokens, sources }) {
+      const s = get();
+      const tokensChanged = !tokensEqual(s.tokens, tokens);
+      const changedIds = Object.keys(sources);
+      if (!tokensChanged && changedIds.length === 0) return;
+
+      // Single history entry — the snapshot captures the PRE-state, so undo
+      // rolls tokens and every rewritten source back together. No coalescing
+      // (the kind is rare and the user won't trigger it twice in 500ms).
+      pushHistory("applyExtraction");
+
+      const components = { ...s.components };
+      for (const id of changedIds) {
+        const c = components[id];
+        if (!c) continue;
+        components[id] = { ...c, source: sources[id] };
+      }
+      set({ components, tokens });
+    },
+
     undo() {
       const s = get();
       if (s.past.length === 0) return;
@@ -508,7 +602,7 @@ export const useProject = create<State>((set, get) => {
         kind: top.kind,
         at: Date.now(),
       };
-      const { components, order, propValues } = top.snapshot;
+      const { components, order, propValues, tokens } = top.snapshot;
       // If the currently selected component is being removed by the undo, drop selection.
       const selectedComponentId =
         s.selectedComponentId && components[s.selectedComponentId]
@@ -523,6 +617,7 @@ export const useProject = create<State>((set, get) => {
         components,
         order,
         propValues,
+        tokens,
         selectedComponentId,
         selectedElementPath: selectedComponentId ? s.selectedElementPath : null,
         openTabs,
@@ -541,7 +636,7 @@ export const useProject = create<State>((set, get) => {
         kind: top.kind,
         at: Date.now(),
       };
-      const { components, order, propValues } = top.snapshot;
+      const { components, order, propValues, tokens } = top.snapshot;
       const selectedComponentId =
         s.selectedComponentId && components[s.selectedComponentId]
           ? s.selectedComponentId
@@ -555,6 +650,7 @@ export const useProject = create<State>((set, get) => {
         components,
         order,
         propValues,
+        tokens,
         selectedComponentId,
         selectedElementPath: selectedComponentId ? s.selectedElementPath : null,
         openTabs,
@@ -585,6 +681,7 @@ export const useProject = create<State>((set, get) => {
         components: empty.components,
         order: empty.order,
         propValues: empty.propValues,
+        tokens: empty.tokens,
         selectedComponentId: empty.selection.selectedComponentId,
         selectedElementPath: empty.selection.selectedElementPath,
         openTabs: empty.selection.openTabs,
@@ -618,6 +715,9 @@ export const useProject = create<State>((set, get) => {
         components: payload.components,
         order: payload.order,
         propValues: payload.propValues,
+        // Fall back to defaults when tokens weren't supplied — happens when
+        // opening a v1 project whose design/tokens.json doesn't exist yet.
+        tokens: payload.tokens ?? defaultTokens(),
         selectedComponentId: sel.selectedComponentId,
         selectedElementPath: sel.selectedElementPath,
         openTabs: sel.openTabs,

@@ -12,7 +12,9 @@
       "WebSearch",
       "WebFetch(domain:mastra.ai)",
       "Bash(node -e \"const ai = require\\('ai'\\); console.log\\(Object.keys\\(ai\\).sort\\(\\).join\\('\\\\n'\\)\\)\")",
-      "Bash(xargs -I{} grep -n \"provider-utils\" {})"
+      "Bash(xargs -I{} grep -n \"provider-utils\" {})",
+      "Bash(grep -E \"\\\\.\\(tsx?|jsx\\)$\")",
+      "Bash(xargs ls *)"
     ]
   }
 }

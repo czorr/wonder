@@ -9,6 +9,8 @@ import {
   Library as LibraryIcon,
   Boxes,
   Trash2,
+  Sparkles,
+  FolderMinus,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -18,6 +20,7 @@ import { useChat } from "@/store/chat";
 import { PRIMITIVES, buildComponentSource, type Primitive } from "@/primitives/snippets";
 import { insertChildAtPath } from "@/ast/insert";
 import { ChatPanel } from "@/app/shell/ChatPanel";
+import { isPrimitiveFolder, PRIMITIVES_FOLDER } from "@/project/primitives";
 
 export function LeftSidebar() {
   const order = useProject((s) => s.order);
@@ -28,6 +31,7 @@ export function LeftSidebar() {
   const addComponent = useProject((s) => s.addComponent);
   const deleteComponent = useProject((s) => s.deleteComponent);
   const setSource = useProject((s) => s.setSource);
+  const setComponentFolder = useProject((s) => s.setComponentFolder);
   const pan = useCanvas((s) => s.pan);
   const zoom = useCanvas((s) => s.zoom);
 
@@ -52,7 +56,16 @@ export function LeftSidebar() {
       bucket.push(c);
       map.set(c.folder, bucket);
     }
-    return Array.from(map.entries());
+    // Surface primitive folders first — they're the pattern library and the
+    // user should see them above ad-hoc component folders. Keeps consumer
+    // folders in their original order beneath.
+    return Array.from(map.entries()).sort(([a], [b]) => {
+      const ap = isPrimitiveFolder(a);
+      const bp = isPrimitiveFolder(b);
+      if (ap && !bp) return -1;
+      if (!ap && bp) return 1;
+      return 0;
+    });
   }, [order, components]);
 
   const spawnComponent = (p: Primitive) => {
@@ -147,24 +160,54 @@ export function LeftSidebar() {
         }}
       />}
 
-      {menu ? (
-        <div
-          className="fixed z-50 min-w-[160px] rounded-md border border-stroke bg-white py-1 shadow-lg"
-          style={{ left: menu.x, top: menu.y }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <button
-            onClick={() => {
-              deleteComponent(menu.id);
-              setMenu(null);
-            }}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-red-600 hover:bg-red-50"
+      {menu ? (() => {
+        const target = components[menu.id];
+        const isPrim = target ? isPrimitiveFolder(target.folder) : false;
+        return (
+          <div
+            className="fixed z-50 min-w-[180px] rounded-md border border-stroke bg-white py-1 shadow-lg"
+            style={{ left: menu.x, top: menu.y }}
+            onMouseDown={(e) => e.stopPropagation()}
           >
-            <Trash2 size={12} strokeWidth={1.75} />
-            Delete component
-          </button>
-        </div>
-      ) : null}
+            {target ? (
+              isPrim ? (
+                <button
+                  onClick={() => {
+                    setComponentFolder(menu.id, "components");
+                    setMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-ink-soft hover:bg-panel-soft"
+                >
+                  <FolderMinus size={12} strokeWidth={1.75} className="text-ink-faint" />
+                  Remove from primitives
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setComponentFolder(menu.id, PRIMITIVES_FOLDER);
+                    setMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-ink-soft hover:bg-panel-soft"
+                >
+                  <Sparkles size={12} strokeWidth={1.75} className="text-accent" />
+                  Promote to primitive
+                </button>
+              )
+            ) : null}
+            <div className="my-1 h-px bg-stroke" />
+            <button
+              onClick={() => {
+                deleteComponent(menu.id);
+                setMenu(null);
+              }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-red-600 hover:bg-red-50"
+            >
+              <Trash2 size={12} strokeWidth={1.75} />
+              Delete component
+            </button>
+          </div>
+        );
+      })() : null}
     </aside>
   );
 }
@@ -219,7 +262,12 @@ function FilesPanel({
         </div>
 
         {folders.map(([folder, items]) => (
-          <TreeFolder key={folder} label={folder} count={items.length}>
+          <TreeFolder
+            key={folder}
+            label={folder}
+            count={items.length}
+            primitive={isPrimitiveFolder(folder)}
+          >
             {items.map((c) => (
               <TreeFile
                 key={c.id}
@@ -285,14 +333,20 @@ function SideTab({
 function TreeFolder({
   label,
   count,
+  primitive,
   children,
 }: {
   label: string;
   count: number;
+  /** True when the folder is part of the primitives pattern library. We swap
+   *  the icon to Sparkles and tint the label so the user sees the convention
+   *  at a glance. */
+  primitive?: boolean;
   children?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(true);
   const Chevron = open ? ChevronDown : ChevronRight;
+  const Icon = primitive ? Sparkles : FolderClosed;
   return (
     <div>
       <button
@@ -300,8 +354,18 @@ function TreeFolder({
         className="group flex w-full items-center gap-1 rounded-md px-1.5 py-1 hover:bg-panel-soft"
       >
         <Chevron size={12} strokeWidth={2} className="text-ink-faint" />
-        <FolderClosed size={13} strokeWidth={1.75} className="text-ink-muted" />
-        <span className="flex-1 text-left text-ink-soft">{label}</span>
+        <Icon
+          size={13}
+          strokeWidth={1.75}
+          className={primitive ? "text-accent" : "text-ink-muted"}
+        />
+        <span
+          className={
+            "flex-1 text-left " + (primitive ? "text-accent-ink" : "text-ink-soft")
+          }
+        >
+          {label}
+        </span>
         <span className="text-[10px] text-ink-faint">{count}</span>
       </button>
       {open && children ? <div className="ml-4">{children}</div> : null}

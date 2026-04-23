@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { Message, ModelId, Session, ToolCall } from "@/chat/types";
 import { loadApiKey } from "@/chat/secrets";
+import { useProject } from "@/store/project";
 import {
   Agent,
   PROVIDERS,
@@ -35,18 +36,12 @@ import {
 export type SidebarTab = "files" | "library" | "assets";
 
 /**
- * Tools that mutate a specific component by id — calling one of these locks
- * the target component on the canvas (pixel-grid overlay + disabled input)
- * until the result lands. `create_component` is excluded because the new id
- * isn't known yet; `delete_component` is excluded because the component
- * disappears when the call succeeds; read-only tools aren't in here either.
+ * A component tagged into the composer — acts as an explicit scope the user
+ * is instructing the agent to work on. We denormalize `name` alongside `id`
+ * so the chip renders correctly even if the user later renames the
+ * component or opens a different project.
  */
-const MUTATING_TOOLS = new Set([
-  "update_component_source",
-  "update_component_classes",
-  "move_component",
-  "resize_component",
-]);
+export type ComposerTag = { id: string; name: string };
 
 type ChatStore = {
   // --- sessions ---
@@ -62,18 +57,24 @@ type ChatStore = {
   /** Internal: abort controller for the in-flight stream, if any. */
   _abort: AbortController | null;
   /**
-   * Set of component ids currently being edited by an in-flight mutating
-   * tool call. Canvas overlays a pixel-grid loader + disables input while
-   * an id is in here. Keyed as a record for cheap O(1) lookups in
-   * `ComponentFrame`.
+   * Component ids locked on the canvas for the duration of the current turn.
+   * Canvas overlays a pixel-grid loader + disables interaction for each id
+   * in here. Seeded at the start of `sendMessage` from the tag/selection
+   * scope and cleared when the turn ends — NOT tracked per-tool-call.
+   *
+   * Why turn-level: tool_call → tool_result is near-synchronous in this
+   * agent, so a per-call lock flickers too fast to see. A turn-level lock
+   * matches the user's mental model ("I asked the agent to touch X; X is
+   * locked until the agent is done").
    */
   busyComponents: Record<string, true>;
+
   /**
-   * Internal: `toolCallId → componentId` mapping used so we can release
-   * the right component when a tool_result/tool_error lands (result events
-   * don't carry the original input args). Reset on turn end.
+   * Components the user has explicitly tagged into the composer — these
+   * become the "in-scope" set for the NEXT message. Cleared on send.
+   * Drives the canvas overlay for the entire turn (not per-tool-call).
    */
-  _busyByCall: Record<string, string>;
+  composerTags: ComposerTag[];
 
   // --- UI ---
   /** The sidebar's normal tab strip (Files / Library / Assets). Independent
@@ -103,6 +104,10 @@ type ChatStore = {
   deleteSession: (id: string) => void;
   renameSession: (id: string, title: string) => void;
   selectModel: (provider: ProviderId, model: ModelId) => void;
+
+  addComposerTag: (id: string) => void;
+  removeComposerTag: (id: string) => void;
+  clearComposerTags: () => void;
 
   sendMessage: (text: string) => Promise<void>;
   stop: () => void;
@@ -139,7 +144,8 @@ export const useChat = create<ChatStore>((set, get) => ({
   streaming: false,
   _abort: null,
   busyComponents: {},
-  _busyByCall: {},
+
+  composerTags: [],
 
   sidebarTab: "files",
   chatOpen: false,
@@ -200,6 +206,20 @@ export const useChat = create<ChatStore>((set, get) => ({
     set({ selectedProvider: provider, selectedModel: model });
   },
 
+  addComposerTag(id) {
+    const s = get();
+    if (s.composerTags.some((t) => t.id === id)) return;
+    const comp = useProject.getState().components[id];
+    if (!comp) return;
+    set({ composerTags: [...s.composerTags, { id, name: comp.name }] });
+  },
+  removeComposerTag(id) {
+    set((s) => ({ composerTags: s.composerTags.filter((t) => t.id !== id) }));
+  },
+  clearComposerTags() {
+    set({ composerTags: [] });
+  },
+
   async sendMessage(text) {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -227,6 +247,24 @@ export const useChat = create<ChatStore>((set, get) => ({
     if (!hasActive) {
       sessionId = get().newSession();
     }
+
+    // Resolve the target components for this turn.
+    //   1. Explicit composer tags take precedence (user declared the scope).
+    //   2. Otherwise fall back to the currently selected component on the
+    //      canvas — that makes the flow "click component → chat → ask"
+    //      work without forcing the user to tag every time.
+    // Dropped if the referenced id no longer exists in the project.
+    const projectNow = useProject.getState();
+    const explicitTagIds = s0.composerTags
+      .map((t) => t.id)
+      .filter((id) => !!projectNow.components[id]);
+    const targetIds =
+      explicitTagIds.length > 0
+        ? explicitTagIds
+        : projectNow.selectedComponentId &&
+            projectNow.components[projectNow.selectedComponentId]
+          ? [projectNow.selectedComponentId]
+          : [];
 
     const userMsg: Message = {
       id: uid(),
@@ -262,7 +300,19 @@ export const useChat = create<ChatStore>((set, get) => ({
     }));
 
     const abort = new AbortController();
-    set({ streaming: true, _abort: abort });
+    // Turn-level lock: seed busyComponents with every target BEFORE we kick
+    // off the stream. That way the canvas overlay appears the instant the
+    // user presses send, not — as the old per-tool-call scheme did — during
+    // the ~microsecond gap between tool_call and tool_result. Also clear
+    // the composer tag strip: the scope is now "committed" to this turn.
+    const seededBusy: Record<string, true> = {};
+    for (const id of targetIds) seededBusy[id] = true;
+    set({
+      streaming: true,
+      _abort: abort,
+      busyComponents: seededBusy,
+      composerTags: [],
+    });
 
     // Build the turn's transcript — everything but the empty assistant
     // placeholder we just inserted.
@@ -276,7 +326,7 @@ export const useChat = create<ChatStore>((set, get) => ({
       const agent = new Agent({
         model,
         tools: defaultTools(),
-        system: buildSystemPrompt(buildProjectContext()),
+        system: buildSystemPrompt(buildProjectContext(targetIds)),
       });
 
       for await (const evt of agent.run(transcript, { signal: abort.signal })) {
@@ -290,15 +340,14 @@ export const useChat = create<ChatStore>((set, get) => ({
         message: err instanceof Error ? err.message : String(err),
       });
     } finally {
-      // Whatever happens, the turn is over — no more tool calls can land,
-      // so release any components that were locked.
-      set({ streaming: false, _abort: null, busyComponents: {}, _busyByCall: {} });
+      // Turn ended — release the overlay on every component we locked.
+      set({ streaming: false, _abort: null, busyComponents: {} });
     }
   },
 
   stop() {
     get()._abort?.abort();
-    set({ streaming: false, _abort: null, busyComponents: {}, _busyByCall: {} });
+    set({ streaming: false, _abort: null, busyComponents: {} });
   },
 }));
 
@@ -317,68 +366,19 @@ function applyEvent(
   messageId: string,
   evt: AgentEvent,
 ): void {
-  set((s) => {
-    const next: Partial<ChatStore> = {
-      sessions: s.sessions.map((sess) => {
-        if (sess.id !== sessionId) return sess;
-        return {
-          ...sess,
-          updatedAt: Date.now(),
-          messages: sess.messages.map((m) => {
-            if (m.id !== messageId) return m;
-            return reduceMessage(m, evt);
-          }),
-        };
-      }),
-    };
-    const busyUpdate = reduceBusy(s.busyComponents, s._busyByCall, evt);
-    if (busyUpdate) {
-      next.busyComponents = busyUpdate.busyComponents;
-      next._busyByCall = busyUpdate._busyByCall;
-    }
-    return next;
-  });
-}
-
-/**
- * Track which components are being mutated right now.
- *
- * - `tool_call` for a mutating tool with an `args.id` → add the id to
- *   `busyComponents` and record `toolCallId → componentId` in the side map.
- * - `tool_result` / `tool_error` for a known `toolCallId` → remove the
- *   mapping and release the component (canvas overlay turns off).
- *
- * Returns `null` when nothing changes, so the caller can skip setState work.
- */
-function reduceBusy(
-  busy: Record<string, true>,
-  byCall: Record<string, string>,
-  evt: AgentEvent,
-): { busyComponents: Record<string, true>; _busyByCall: Record<string, string> } | null {
-  if (evt.type === "tool_call") {
-    if (!MUTATING_TOOLS.has(evt.name)) return null;
-    const id = typeof evt.args?.id === "string" ? evt.args.id : null;
-    if (!id) return null;
-    return {
-      busyComponents: busy[id] ? busy : { ...busy, [id]: true },
-      _busyByCall: { ...byCall, [evt.id]: id },
-    };
-  }
-  if (evt.type === "tool_result" || evt.type === "tool_error") {
-    const componentId = byCall[evt.id];
-    if (!componentId) return null;
-    const { [evt.id]: _dropped, ...restByCall } = byCall;
-    // Only release the component if no OTHER pending call still references
-    // it. Rare in practice (the agent doesn't parallel-mutate the same id),
-    // but cheap to check and avoids a flicker if the model did queue two.
-    const stillBusy = Object.values(restByCall).includes(componentId);
-    if (stillBusy) {
-      return { busyComponents: busy, _busyByCall: restByCall };
-    }
-    const { [componentId]: _out, ...restBusy } = busy;
-    return { busyComponents: restBusy, _busyByCall: restByCall };
-  }
-  return null;
+  set((s) => ({
+    sessions: s.sessions.map((sess) => {
+      if (sess.id !== sessionId) return sess;
+      return {
+        ...sess,
+        updatedAt: Date.now(),
+        messages: sess.messages.map((m) => {
+          if (m.id !== messageId) return m;
+          return reduceMessage(m, evt);
+        }),
+      };
+    }),
+  }));
 }
 
 function reduceMessage(m: Message, evt: AgentEvent): Message {

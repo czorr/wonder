@@ -1,23 +1,39 @@
 import { PROJECT_FILE_VERSION, type ProjectFile } from "./types";
 
-/**
- * Upgrade a parsed wonder.json from any older schema version to the current one.
- *
- * Today we only have v1, so this is a passthrough; the function exists so that
- * (a) callers always route through it — no "just-in-case" parsing sprinkled
- * around the codebase — and (b) when v2 lands, a single file changes.
- *
- * Throws if the version is newer than what this build knows how to read.
- */
-export function migrateProjectFile(raw: unknown): ProjectFile {
+// ---------------------------------------------------------------------------
+// Schema migration
+//
+// Single entry point — `migrateProjectFile(raw)` — that accepts any previous
+// wonder.json shape and returns a value conforming to the CURRENT schema.
+// Also reports the on-disk version so the caller can prompt for confirmation
+// before committing to disk (the "Xcode-style" upgrade flow).
+//
+// Supported versions:
+//   - v1: design config embedded in wonder.json via `tailwindConfig`
+//   - v2: design config moved to `design/tokens.json` (see src/project/tokens.ts)
+//
+// Older ("v0") wonder.json files — the unversioned drafts from earliest
+// development — were never shipped to any user, so we don't carry that
+// path. If one shows up (version absent or 0), we treat it as v1 with
+// best-effort defaults.
+// ---------------------------------------------------------------------------
+
+export type MigrateResult = {
+  /** Always conforms to the CURRENT schema, regardless of on-disk version. */
+  meta: ProjectFile;
+  /** The version number as read from disk — lets callers detect upgrades. */
+  fromVersion: number;
+};
+
+export function migrateProjectFile(raw: unknown): MigrateResult {
   if (!raw || typeof raw !== "object") {
     throw new ProjectFileError(
       "wonder.json is not a valid object",
       "invalid-shape",
     );
   }
-  const obj = raw as Partial<ProjectFile>;
-  const version = typeof obj.version === "number" ? obj.version : 0;
+  const obj = raw as Partial<ProjectFile> & { tailwindConfig?: unknown };
+  const version = typeof obj.version === "number" ? obj.version : 1;
 
   if (version > PROJECT_FILE_VERSION) {
     throw new ProjectFileError(
@@ -27,22 +43,29 @@ export function migrateProjectFile(raw: unknown): ProjectFile {
     );
   }
 
-  // Validate required fields for v1. Anything missing means the file is
-  // corrupt or truncated — surface a clear error rather than booting with
-  // a half-populated store.
-  if (version === PROJECT_FILE_VERSION) {
-    return assertV1Shape(obj);
+  // v1 → v2: strip `tailwindConfig` (now lives in design/tokens.json) and
+  // rebadge the version. Everything else is structurally unchanged, so the
+  // migration is a single-field delete — no data loss.
+  let migrated = obj;
+  if (version < 2) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { tailwindConfig: _drop, ...rest } = obj;
+    migrated = { ...rest, version: 2 };
   }
 
-  // Future: if (version === 0) { return migrateV0toV1(obj); }
-
-  throw new ProjectFileError(
-    `Unknown wonder.json version: ${version}`,
-    "unknown-version",
-  );
+  return {
+    meta: assertCurrentShape(migrated),
+    fromVersion: version,
+  };
 }
 
-function assertV1Shape(obj: Partial<ProjectFile>): ProjectFile {
+/**
+ * Validate that the migrated object satisfies the current schema. Missing
+ * required fields throw (rather than defaulting silently) because a
+ * corrupted/truncated file is worse than an explicit failure the user can
+ * act on — restore from backup, edit by hand, etc.
+ */
+function assertCurrentShape(obj: Partial<ProjectFile>): ProjectFile {
   const req = <T>(cond: T | undefined | null, field: string): T => {
     if (cond == null) {
       throw new ProjectFileError(
@@ -70,7 +93,6 @@ function assertV1Shape(obj: Partial<ProjectFile>): ProjectFile {
     },
     components: req(obj.components, "components"),
     propValues: obj.propValues ?? {},
-    tailwindConfig: obj.tailwindConfig ?? null,
   };
 }
 

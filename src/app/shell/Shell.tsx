@@ -7,6 +7,7 @@ import { CanvasArea } from "@/app/shell/CanvasArea";
 import { CodePanel } from "@/app/shell/CodePanel";
 import { StatusBar } from "@/app/shell/StatusBar";
 import { PreviewOverlay } from "@/app/shell/PreviewOverlay";
+import { ProjectTokensStyle } from "@/app/shell/ProjectTokensStyle";
 import { useProject } from "@/store/project";
 import { useCanvas } from "@/store/canvas";
 import { normalizePastedComponent } from "@/ast/paste";
@@ -79,6 +80,7 @@ export function Shell() {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-canvas text-ink">
+      <ProjectTokensStyle />
       <TitleStrip />
       <Topbar />
       <div className="flex min-h-0 flex-1">

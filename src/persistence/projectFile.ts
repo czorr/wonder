@@ -25,7 +25,6 @@ export function serializeMeta(args: {
     openTabs: string[];
     activeTab: string | null;
   };
-  tailwindConfig?: string | null;
 }): ProjectFile {
   const componentsArr: ProjectFileComponent[] = [];
   for (const id of args.order) {
@@ -43,7 +42,7 @@ export function serializeMeta(args: {
     });
   }
   return {
-    $schema: "https://wonder.dev/schemas/v1.json",
+    $schema: "https://wonder.dev/schemas/v2.json",
     version: PROJECT_FILE_VERSION,
     name: args.name,
     createdAt: args.createdAt,
@@ -52,7 +51,6 @@ export function serializeMeta(args: {
     selection: args.selection,
     components: componentsArr,
     propValues: args.propValues,
-    tailwindConfig: args.tailwindConfig ?? null,
   };
 }
 
