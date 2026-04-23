@@ -14,8 +14,10 @@ import type { LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useProject, type WonderComponent } from "@/store/project";
 import { useCanvas } from "@/store/canvas";
+import { useChat } from "@/store/chat";
 import { PRIMITIVES, buildComponentSource, type Primitive } from "@/primitives/snippets";
 import { insertChildAtPath } from "@/ast/insert";
+import { ChatPanel } from "@/app/shell/ChatPanel";
 
 export function LeftSidebar() {
   const order = useProject((s) => s.order);
@@ -109,77 +111,41 @@ export function LeftSidebar() {
     spawnComponent(p);
   };
 
+  // Sidebar normally hosts a tab strip (Files / Library / Assets). When the
+  // chat panel is toggled on (from the Topbar button or ⌘L), we swap the
+  // whole content for ChatPanel and widen the sidebar for breathing room.
+  // The chat trigger is intentionally NOT a 4th tab here — the user wanted
+  // it out of the tab strip so the tabs don't crowd.
+  const tab = useChat((s) => s.sidebarTab);
+  const setTab = useChat((s) => s.setSidebarTab);
+  const chatOpen = useChat((s) => s.chatOpen);
+  const widthClass = chatOpen ? "w-[360px]" : "w-[232px]";
+
   return (
-    <aside className="flex w-[232px] shrink-0 flex-col border-r border-stroke bg-panel text-[12px]">
-      <div className="flex h-9 items-center gap-3 border-b border-stroke px-3 text-[11px] font-medium">
-        <SideTab icon={Files} label="Files" active />
-        <SideTab icon={LibraryIcon} label="Library" />
-        <SideTab icon={Boxes} label="Assets" />
-      </div>
-
-      <div className="px-3 pt-3">
-        <div className="flex items-center gap-2 rounded-md border border-stroke bg-panel-soft px-2 py-1.5">
-          <Search size={12} className="text-ink-faint" strokeWidth={2} />
-          <input
-            placeholder="Search components..."
-            className="flex-1 bg-transparent text-[11px] text-ink placeholder:text-ink-faint outline-none"
-          />
-          <kbd className="rounded bg-white px-1 py-0.5 text-[9px] font-medium text-ink-faint border border-stroke">
-            ⌘K
-          </kbd>
+    <aside
+      className={
+        "flex " + widthClass + " shrink-0 flex-col border-r border-stroke bg-panel text-[12px] transition-[width] duration-150"
+      }
+    >
+      {chatOpen ? null : (
+        <div className="flex h-9 items-center gap-3 border-b border-stroke px-3 text-[11px] font-medium">
+          <SideTab icon={Files} label="Files" active={tab === "files"} onClick={() => setTab("files")} />
+          <SideTab icon={LibraryIcon} label="Library" active={tab === "library"} onClick={() => setTab("library")} />
+          <SideTab icon={Boxes} label="Assets" active={tab === "assets"} onClick={() => setTab("assets")} />
         </div>
-      </div>
+      )}
 
-      <div className="flex-1 overflow-auto px-1.5 py-3">
-        <div className="flex items-center justify-between pl-2 pr-1.5 pb-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
-            Project
-          </span>
-          <button
-            onClick={() => spawnComponent(PRIMITIVES[0])}
-            title="New component"
-            className="grid size-5 place-items-center rounded text-ink-faint hover:bg-panel-soft hover:text-ink-muted"
-          >
-            <Plus size={11} strokeWidth={2} />
-          </button>
-        </div>
-
-        {folders.map(([folder, items]) => (
-          <TreeFolder key={folder} label={folder} count={items.length}>
-            {items.map((c) => (
-              <TreeFile
-                key={c.id}
-                label={c.filename}
-                active={selectedId === c.id}
-                dirty={selectedId === c.id}
-                onClick={() => selectComponent(c.id)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setMenu({ x: e.clientX, y: e.clientY, id: c.id });
-                }}
-              />
-            ))}
-          </TreeFolder>
-        ))}
-        <TreeFile label="tailwind.config.ts" config />
-
-        <div className="mt-4 pl-2 pr-1.5 pb-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
-            Primitives
-          </span>
-        </div>
-        <div className="grid grid-cols-3 gap-1 px-1">
-          {PRIMITIVES.map((p) => (
-            <PrimitiveCard
-              key={p.id}
-              icon={p.icon}
-              label={p.label}
-              primitive={p}
-              onClick={() => onPrimitiveClick(p)}
-            />
-          ))}
-        </div>
-      </div>
+      {chatOpen ? <ChatPanel /> : <FilesPanel
+        selectedId={selectedId}
+        folders={folders}
+        selectComponent={selectComponent}
+        onSpawnFirstPrimitive={() => spawnComponent(PRIMITIVES[0])}
+        onPrimitiveClick={onPrimitiveClick}
+        onContextMenu={(e, id) => {
+          e.preventDefault();
+          setMenu({ x: e.clientX, y: e.clientY, id });
+        }}
+      />}
 
       {menu ? (
         <div
@@ -203,17 +169,106 @@ export function LeftSidebar() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Files tab content — extracted into a subcomponent so the main LeftSidebar
+// render tree stays readable once we have multiple tab views.
+// ---------------------------------------------------------------------------
+
+function FilesPanel({
+  selectedId,
+  folders,
+  selectComponent,
+  onSpawnFirstPrimitive,
+  onPrimitiveClick,
+  onContextMenu,
+}: {
+  selectedId: string | null;
+  folders: [string, WonderComponent[]][];
+  selectComponent: (id: string) => void;
+  onSpawnFirstPrimitive: () => void;
+  onPrimitiveClick: (p: Primitive) => void;
+  onContextMenu: (e: React.MouseEvent, id: string) => void;
+}) {
+  return (
+    <>
+      <div className="px-3 pt-3">
+        <div className="flex items-center gap-2 rounded-md border border-stroke bg-panel-soft px-2 py-1.5">
+          <Search size={12} className="text-ink-faint" strokeWidth={2} />
+          <input
+            placeholder="Search components..."
+            className="flex-1 bg-transparent text-[11px] text-ink placeholder:text-ink-faint outline-none"
+          />
+          <kbd className="rounded bg-white px-1 py-0.5 text-[9px] font-medium text-ink-faint border border-stroke">
+            ⌘K
+          </kbd>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto px-1.5 py-3">
+        <div className="flex items-center justify-between pl-2 pr-1.5 pb-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+            Project
+          </span>
+          <button
+            onClick={onSpawnFirstPrimitive}
+            title="New component"
+            className="grid size-5 place-items-center rounded text-ink-faint hover:bg-panel-soft hover:text-ink-muted"
+          >
+            <Plus size={11} strokeWidth={2} />
+          </button>
+        </div>
+
+        {folders.map(([folder, items]) => (
+          <TreeFolder key={folder} label={folder} count={items.length}>
+            {items.map((c) => (
+              <TreeFile
+                key={c.id}
+                label={c.filename}
+                active={selectedId === c.id}
+                dirty={selectedId === c.id}
+                onClick={() => selectComponent(c.id)}
+                onContextMenu={(e) => onContextMenu(e, c.id)}
+              />
+            ))}
+          </TreeFolder>
+        ))}
+        <TreeFile label="tailwind.config.ts" config />
+
+        <div className="mt-4 pl-2 pr-1.5 pb-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+            Primitives
+          </span>
+        </div>
+        <div className="grid grid-cols-3 gap-1 px-1">
+          {PRIMITIVES.map((p) => (
+            <PrimitiveCard
+              key={p.id}
+              icon={p.icon}
+              label={p.label}
+              primitive={p}
+              onClick={() => onPrimitiveClick(p)}
+            />
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
 function SideTab({
   icon: Icon,
   label,
   active,
+  onClick,
 }: {
   icon: LucideIcon;
   label: string;
   active?: boolean;
+  onClick?: () => void;
 }) {
   return (
     <button
+      onClick={onClick}
       className={
         "flex items-center gap-1.5 h-9 border-b-2 transition -mb-px " +
         (active

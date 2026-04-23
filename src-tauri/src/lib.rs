@@ -6,6 +6,10 @@ pub fn run() {
     // permissions are declared in src-tauri/capabilities/default.json.
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_dialog::init())
+    // HTTP plugin powers LLM API calls from the webview without CORS
+    // restrictions. Allowed URL scopes are declared in the capabilities file;
+    // JS side uses @tauri-apps/plugin-http.
+    .plugin(tauri_plugin_http::init())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

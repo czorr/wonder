@@ -4,10 +4,12 @@ import { bundle } from "@/sandbox/bundler";
 import { HOT_RELOAD_DEBOUNCE_MS } from "@/constants";
 import { useProject, type WonderComponent } from "@/store/project";
 import { useMetrics } from "@/store/metrics";
+import { useChat } from "@/store/chat";
 import type { Rect } from "@/sandbox/messaging";
 import { setTextAtPath } from "@/ast/text";
 import { getClassNameAtPath, setClassAtPath } from "@/ast/tailwind";
 import { insertChildAtPath } from "@/ast/insert";
+import { PixelGridLoader } from "@/canvas/PixelGridLoader";
 
 type Props = {
   component: WonderComponent;
@@ -46,6 +48,10 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
   const propValues = useProject((s) => s.propValues[component.id]);
   const setRootSize = useMetrics((s) => s.setRootSize);
   const setSelectedRect = useMetrics((s) => s.setSelectedRect);
+  // True while the agent is running a mutating tool call against this
+  // component — overlay a pixel-grid loader and disable user input so the
+  // user doesn't fight the AI mid-edit.
+  const isBusy = useChat((s) => !!s.busyComponents[component.id]);
 
   useEffect(() => {
     if (!ready) return;
@@ -78,6 +84,9 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
 
   const onMouseDownHeader = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
+    // Don't let the user drag the frame while the agent is editing it —
+    // would fight the AI's tool calls mid-stream.
+    if (isBusy) return;
     e.preventDefault();
     selectComponent(component.id);
     const startX = e.clientX;
@@ -217,6 +226,7 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
           </pre>
         ) : null}
         {selected && sel ? <SelectionOverlay sel={sel} /> : null}
+        {isBusy ? <BusyOverlay /> : null}
         {dropTarget ? (
           <>
             {/* Subtle parent outline so you know which container owns the drop. */}
@@ -256,7 +266,7 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
           </>
         ) : null}
       </div>
-      {selected && (
+      {selected && !isBusy && (
         <ResizeHandles
           component={component}
           size={size}
@@ -286,6 +296,35 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
           }}
         />
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// BusyOverlay
+//
+// Shown on top of a component while the agent is editing it. Absorbs pointer
+// events (so the user can't click inside, drag, or text-edit), dims the
+// sandbox slightly, and floats the pixel-grid loader in the middle.
+//
+// The ring is accent-tinted to visually tie it to the chat status chip
+// (which uses the same green pulse).
+// ---------------------------------------------------------------------------
+function BusyOverlay() {
+  return (
+    <div
+      className="absolute inset-0 z-10 flex items-center justify-center rounded-sm bg-white/55 ring-2 ring-accent/50"
+      // Explicit auto so it eats clicks even if a parent set pointer-events.
+      style={{ pointerEvents: "auto", cursor: "wait" }}
+      // Swallow any interactions that would otherwise fall through to the
+      // iframe below (clicks, drag starts, text-edit double-clicks).
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+      }}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      <PixelGridLoader pixel={7} gap={2} duration={1000} />
     </div>
   );
 }

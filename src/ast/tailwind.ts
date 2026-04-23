@@ -39,6 +39,44 @@ export function getClassNameAtPath(
   return splitClasses(str);
 }
 
+/**
+ * Add Tailwind classes to the `className` of the element at `path`. Duplicates
+ * are de-duplicated preserving insertion order of the existing list. Used by
+ * the agent's `update_component_classes` tool.
+ */
+export function addClassesAtPath(
+  code: string,
+  path: WonderPath,
+  classesToAdd: string[],
+): string {
+  if (classesToAdd.length === 0) return code;
+  const ast = parseSource(code);
+  const root = findRootJSXElement(ast);
+  if (!root) return code;
+  const target = resolvePath(root, path);
+  if (!target) return code;
+  const attr = getJSXAttr(target, "className");
+  if (!attr) return code;
+  const v = attr.value;
+  let literal: t.StringLiteral;
+  if (t.isStringLiteral(v)) literal = v;
+  else if (
+    t.isJSXExpressionContainer(v) &&
+    t.isStringLiteral(v.expression)
+  ) literal = v.expression;
+  else return code;
+  const existing = splitClasses(literal.value);
+  const seen = new Set(existing);
+  for (const c of classesToAdd) {
+    if (!seen.has(c)) {
+      existing.push(c);
+      seen.add(c);
+    }
+  }
+  literal.value = existing.join(" ");
+  return printSource(ast);
+}
+
 export function removeClassesAtPath(
   code: string,
   path: WonderPath,

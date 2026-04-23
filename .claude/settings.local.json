@@ -6,7 +6,13 @@
       "Bash(npx tsc *)",
       "Bash(pnpm add *)",
       "Bash(pnpm tsc *)",
-      "Bash(pnpm remove *)"
+      "Bash(pnpm remove *)",
+      "Bash(pnpm exec *)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "WebFetch(domain:mastra.ai)",
+      "Bash(node -e \"const ai = require\\('ai'\\); console.log\\(Object.keys\\(ai\\).sort\\(\\).join\\('\\\\n'\\)\\)\")",
+      "Bash(xargs -I{} grep -n \"provider-utils\" {})"
     ]
   }
 }

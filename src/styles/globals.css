@@ -53,3 +53,16 @@ body {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Pixel-grid loader — used on the canvas while the agent is editing a
+ * component. A 3×3 grid of pixels; the centre stays lit and the 8 perimeter
+ * pixels chase each other clockwise. See src/canvas/PixelGridLoader.tsx. */
+@keyframes pixgrid-pulse {
+  0%,
+  100% {
+    opacity: 0.18;
+  }
+  40% {
+    opacity: 1;
+  }
+}

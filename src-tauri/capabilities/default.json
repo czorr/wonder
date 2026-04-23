@@ -33,6 +33,15 @@
         { "path": "$DESKTOP/**" },
         { "path": "$DOWNLOAD/**" }
       ]
+    },
+
+    "http:default",
+    {
+      "identifier": "http:allow-fetch",
+      "allow": [
+        { "url": "https://api.openai.com/*" },
+        { "url": "https://api.anthropic.com/*" }
+      ]
     }
   ]
 }

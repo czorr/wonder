@@ -13,10 +13,12 @@ import {
   Eye,
   Download,
   RefreshCcw,
+  Sparkles,
 } from "lucide-react";
 import { useEffect } from "react";
 import { useCanvas } from "@/store/canvas";
 import { useProject } from "@/store/project";
+import { useChat } from "@/store/chat";
 import { removeClassesAtPath } from "@/ast/tailwind";
 import {
   actionNewProject,
@@ -43,6 +45,8 @@ export function Topbar() {
   const setSource = useProject((s) => s.setSource);
   const undo = useProject((s) => s.undo);
   const redo = useProject((s) => s.redo);
+  const chatOpen = useChat((s) => s.chatOpen);
+  const toggleChat = useChat((s) => s.toggleChat);
   // Subscribe to stack lengths so the buttons re-render when enable state flips.
   // (We intentionally don't use canUndo/canRedo getters — those wouldn't trigger re-renders.)
   const pastLen = useProject((s) => s.past.length);
@@ -113,6 +117,16 @@ export function Topbar() {
         else void actionSave();
         return;
       }
+      // ⌘L → open (if closed) + focus the AI chat. Capture-phase so Monaco's
+      // Cmd+L (go-to-line) never swallows it while the editor has focus.
+      if (key === "l") {
+        e.preventDefault();
+        e.stopPropagation();
+        const chat = useChat.getState();
+        if (!chat.chatOpen) chat.setChatOpen(true);
+        chat.requestFocus();
+        return;
+      }
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true });
@@ -135,6 +149,23 @@ export function Topbar() {
     <header className="flex h-12 shrink-0 items-center justify-between gap-4 border-b border-stroke bg-panel px-3">
       {/* Left: history + tools */}
       <div className="flex items-center gap-3">
+        {/* Chat toggle — lives here (not in the sidebar tab strip) so the
+            tabs don't crowd. Gets a slightly different treatment from
+            regular icon buttons: tinted when open + a sparkle accent. */}
+        <button
+          onClick={toggleChat}
+          title="Toggle AI chat (⌘L)"
+          className={
+            "flex items-center gap-1 rounded-md px-1.5 h-7 text-[11px] font-medium transition " +
+            (chatOpen
+              ? "bg-accent-tint text-accent"
+              : "text-ink-muted hover:bg-panel-soft hover:text-ink")
+          }
+        >
+          <Sparkles size={13} strokeWidth={1.75} />
+          Chat
+        </button>
+        <div className="h-5 w-px bg-stroke" />
         <div className="flex items-center gap-0.5">
           <IconBtn
             onClick={undo}

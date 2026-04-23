@@ -84,13 +84,26 @@ Proyecto = **carpeta en disco** con `wonder.json` + `components/<folder>/<Name>.
 - [ ] Editor de `tailwind.config` global — `src/settings/` no existe
 - [ ] Fake item `tailwind.config.ts` en sidebar sin handler
 
-## 9. Features nuevas pendientes
+## 9. AI Chat (LLM en panel izquierdo) ⭐
 
-- [ ] **AI chat para generación de componentes** (prompt → JSX → frame nuevo en canvas)
+Chat como **agente** (no simple API call) viviendo en el LeftSidebar (toggle desde Topbar). Vercel AI SDK v6 (`ai@6`, `@ai-sdk/openai@3`, `@ai-sdk/anthropic@3`) corre directo en el webview de Tauri — streaming + tool calling nativo. El agente crea/edita/borra componentes via tool calls, despachando a acciones del store (undo/redo + dirty flag gratis). Preparado para skills (extract design system, normalize tokens, …) via composición de `ToolRegistry`s.
+
+- [x] **Fase 1 — Infra**: `@tauri-apps/plugin-http` instalado (JS + Cargo), registrado en `lib.rs`, permisos `http:default` + URL scope (`api.openai.com`, `api.anthropic.com`) en `capabilities/default.json`
+- [x] **Fase 2 — Store**: `src/store/chat.ts` Zustand con sesiones múltiples en memoria + acciones (newSession, selectSession, deleteSession, renameSession, selectModel, sendMessage, stop) + chatOpen + settingsOpen + focusRequestId. `sendMessage` construye un `Agent` fresh por turno. Persistencia a `<project>/.wonder/chats.json` pendiente (follow-up)
+- [x] **Fase 3 — UI shell**: botón "Chat" ✨ en Topbar (a la izquierda de undo/redo, tinted cuando está abierto) — saca el chat del tab strip para no amontonarlo. LeftSidebar swap full-content a `ChatPanel.tsx` cuando `chatOpen`, con width dinámico 232 ↔ 360 con transición. ChatPanel header con ModelPicker + SessionDropdown max-h 280 + new session + settings gear + close (X). MessageList con auto-scroll y estado vacío, ChatInput auto-grow con Enter=send / Shift+Enter=newline / stop mientras stream
+- [x] **Fase 4 — Settings modal**: `ChatSettingsModal.tsx` provider-agnostic; default-model picker + itera `PROVIDERS` mostrando OpenAI (con input password + toggle show/hide + save/clear) y Anthropic con badge "Coming soon"; persiste via `secrets.ts`
+- [x] **Fase 5 — Agent core (AI SDK v6)**: módulo `src/agent/` con `Agent` class wrappeando `streamText` + normalizando `fullStream` a `AgentEvent` para la UI. `models.ts` como catálogo multi-provider (factory por provider, OpenAI enabled, Anthropic "coming soon"). `resolveLanguageModel(modelId, apiKey)` inyecta la key sin usar env. `stopWhen: stepCountIs(10)` por defecto (configurable desde `config.ts`).
+- [x] **Fase 6 — Tools**: `list_components`, `read_component`, `create_component`, `update_component_source`, `update_component_classes` (AST-aware vía `addClassesAtPath`/`removeClassesAtPath`), `delete_component`, `move_component`, `resize_component`, `get_selected`, `select_component` — todas despachan a `useProject.getState()` actions. `src/agent/tools/registry.ts` + `mergeTools()` para que skills futuros compongan toolsets.
+- [x] **Fase 7 — System prompt + context**: `buildProjectContext()` produce manifest compacto (id/name/folder/frame) + source del seleccionado; `buildSystemPrompt(ctx, skillAddenda?)` se reconstruye cada turno para que el agente vea el estado real del proyecto. Skills podrán appendear addenda sin parchar el core.
+- [x] **Fase 8 — Shortcuts**: ⌘L wired en Topbar (capture phase, activa chat + `requestFocus()`); Enter/Shift+Enter implementados en ChatInput; stop button abort-controller.
+- [ ] **Pendiente**: persistencia de sesiones en `<project>/.wonder/chats.json`; render de tool-call chips inline; errores 401/429 con CTAs a Settings; primera skill real (`design-system.extract`).
+
+## 10. Features nuevas pendientes
+
 - [ ] Drag & drop de primitivas (ya casi) + reparenting de elementos existentes
 - [ ] tldraw real o bendecir canvas custom y sacar tldraw del plan
 
-## 10. Calidad
+## 11. Calidad
 
 - [ ] Tests unitarios de `ast/` (objetivo ≥80%)
 - [ ] Tests e2e con WebDriver Tauri
@@ -99,6 +112,50 @@ Proyecto = **carpeta en disco** con `wonder.json` + `components/<folder>/<Name>.
 ---
 
 ## Cambios recientes
+
+**2026-04-22 — AI Chat (Fases 5-7 — Agent + tools + context):**
+
+- Replanteo del chat como **agente** (user: "esto es un agent, no es un simple api call"). Research: Mastra es server-only (no corre en webview); Vercel AI SDK v6 sí → pick AI SDK.
+- Instalados `ai@6.0.168`, `@ai-sdk/openai@3.0.53`, `@ai-sdk/anthropic@3.0.71`, `zod@4.3.6`.
+- **Borrado** `src/chat/providers/*` (stub obsoleto) — "borrado, codigo limpio siempre".
+- Nuevo módulo `src/agent/`:
+  - `config.ts` — `DEFAULT_MAX_STEPS=10`, `DEFAULT_TEMPERATURE=0.2` (preparados para exponerse en Settings).
+  - `types.ts` — `AgentEvent` union (text/tool_call/tool_result/tool_error/done/error) normalizado; la UI no importa de `ai` directamente.
+  - `models.ts` — catálogo provider-agnostic: `PROVIDERS` con factory por provider (`createOpenAI`/`createAnthropic`). `resolveLanguageModel(modelId, apiKey)` inyecta la key. Agregar un provider nuevo = una entry en `PROVIDERS`.
+  - `tools/registry.ts` — `ToolRegistry = ToolSet` + `mergeTools(...)` para skills.
+  - `tools/components.ts` — 8 tools (list/read/create/update_source/update_classes/delete/move/resize). `update_component_classes` usa AST: add/removeClasses/removePrefixes en un path (ej. quitar `bg-*` antes de agregar `bg-emerald-500`).
+  - `tools/selection.ts` — `get_selected` (incluye las classes del elemento activo sin necesidad de un read extra), `select_component`.
+  - `tools/index.ts` — `defaultTools()` = merge de componentTools + selectionTools.
+  - `context.ts` — `buildProjectContext()` snap compacto (manifest id/name/folder/frame + source del seleccionado).
+  - `systemPrompt.ts` — `buildSystemPrompt(ctx, skillAddenda?)` reconstruido cada turno.
+  - `agent.ts` — clase `Agent` con `run(messages, {signal})` → `AsyncIterable<AgentEvent>`. Wrappea `streamText` + `stopWhen: stepCountIs(maxSteps)` + maps `fullStream` → `AgentEvent`.
+  - `skills/README.md` — placeholder para skills futuros (extract / normalize / variants / autoarrange).
+  - `index.ts` — barrel.
+- `src/chat/types.ts` — trimmed a persistencia pura (Message/Session/ToolCall/ChatFile). `ChatEvent` movido a `agent/types.ts`; `ProviderId`/`ModelConfig` a `agent/models.ts`.
+- `src/chat/secrets.ts` — import de `ProviderId` ahora viene de `@/agent/models`.
+- `src/store/chat.ts` — `sendMessage` construye `new Agent({ model: resolveLanguageModel(modelId, apiKey), tools: defaultTools(), system: buildSystemPrompt(buildProjectContext()) })` y consume `agent.run(...)`. Reducer `reduceMessage` ahora maneja `tool_call`/`tool_result`/`tool_error` en el array `toolCalls[]` del assistant message (para UI de chips inline).
+- `src/ast/tailwind.ts` — nuevo `addClassesAtPath(code, path, classes[])` dedupe-preserving-order para `update_component_classes`.
+- `src/app/shell/ChatPanel.tsx` + `ChatSettingsModal.tsx` — imports migrados de `@/chat/providers` a `@/agent`. Settings ahora incluye **Default model** section (botones tipo chip, sincronizados con el picker del chat header — "En ambos", como pediste).
+- Type-check: 0 errores nuevos (sólo warnings pre-existentes de unused vars).
+
+**2026-04-22 — AI Chat (Fases 2-4 — store + UI visible):**
+
+- `src/store/chat.ts` — Zustand store: sessions[], activeSessionId, selectedProvider/Model, streaming + abort, sidebarTab, settingsOpen, focusRequestId. `sendMessage` ya itera eventos del provider (stub emite `error` hasta Fase 5); reducer `applyEvent` aplica `text`/`error` al assistant message. Título de sesión se autocompleta con el primer prompt del usuario.
+- `src/app/shell/LeftSidebar.tsx` — 4º tab "Chat" (icono Sparkles). Tab state hoisted a `useChat` para que ⌘L pueda cambiarlo desde fuera. Width dinámico `w-[232px]` ↔ `w-[360px]` con transición. `FilesPanel` extraído como subcomponente para limpieza.
+- `src/app/shell/ChatPanel.tsx` — header (model dropdown con descripción + session dropdown max-h 280 + new chat + settings gear), MessageList con auto-scroll + estado vacío (hero con icono + copy), ChatInput auto-grow hasta 160px con Enter/Shift+Enter/stop.
+- `src/app/shell/ChatSettingsModal.tsx` — modal provider-agnostic; itera `PROVIDERS` — OpenAI con input password + show/hide + save + clear; Anthropic placeholder con badge "Coming soon"; escape-to-close + click-outside; persiste via `secrets.ts`.
+- `src/app/shell/Topbar.tsx` — ⌘L en capture phase (antes que Monaco cmd+L de go-to-line). Activa tab Chat + `requestFocus()`.
+
+**2026-04-22 — AI Chat (Fase 1 — infra + skeleton):**
+
+- `src-tauri/Cargo.toml` + `src/lib.rs` + `capabilities/default.json` — plugin `tauri-plugin-http` instalado/registrado; permiso `http:default` + scope de URLs para `api.openai.com` y `api.anthropic.com`
+- `@tauri-apps/plugin-http` en package.json
+- `src/chat/types.ts` — `Message`, `Session`, `ToolCall`, `ModelConfig`, `ChatEvent` (protocolo de streaming provider-agnostic), `ChatFile` (v1, persiste en `<project>/.wonder/chats.json`)
+- `src/chat/providers/types.ts` — interface `ChatProvider` + `StreamOptions` + `ProviderTool`; el store solo depende de la interface
+- `src/chat/providers/openai.ts` — stub con metadata y modelos (`gpt-5.4-mini`, `gpt-5.3-codex`); `stream()` emite event `error` por ahora (real fetch aterriza en Fase 5)
+- `src/chat/providers/index.ts` — registry `PROVIDERS` con OpenAI y Anthropic (placeholder `enabled: false` "coming soon"); helpers `allModels()` / `providerForModel()`
+- `src/chat/secrets.ts` — API keys en `$APPDATA/secrets.json` keyed por provider (no keychain por ahora; actualizable sin cambiar callsites)
+- `src/chat/index.ts` — barrel export
 
 **2026-04-22 — Persistencia local (folder-based):**
 
@@ -137,9 +194,12 @@ Fase 2 (arreglos + ghost preview):
 ## Siguiente
 
 Pendiente por prioridad:
-1. **Persistencia fase 2** — Autosave debounced + recovery de crash (`.autosave` shadow + rename atómico; recovery prompt al abrir)
-2. AI chat para generación de componentes (tool interface = `addComponent` / `setSource` / `deleteComponent` del store; persistencia queda cubierta por save del usuario)
-3. Drag de elemento existente dentro del sandbox para reordenar (reparent)
-4. Drag de un componente entero del canvas DENTRO de otro (nesting de componentes)
-5. Breakpoints/estados wirings reales (prefijos `sm:`/`hover:` en mutaciones)
-6. Snapshots / timeline real en StatusBar
+1. **AI Chat — Smoke test end-to-end**: abrir chat, meter API key, pedir "crea un botón verde primario" y verificar que aparece en el canvas con undo. Si falla, debug desde el `fullStream` loop.
+2. **AI Chat — Tool-call chips en UI**: renderizar `message.toolCalls[]` como chips inline ("✨ create_component(Button)") con expandable args/result.
+3. **AI Chat — Persistencia de sesiones** en `<project>/.wonder/chats.json`.
+4. **AI Chat — Primera skill real**: `design-system.extract` (scan del proyecto → paleta inferida + tokens).
+5. **Persistencia fase 2** — Autosave debounced + recovery de crash.
+6. Drag de elemento existente dentro del sandbox para reordenar (reparent).
+7. Drag de un componente entero del canvas DENTRO de otro (nesting de componentes).
+8. Breakpoints/estados wirings reales (prefijos `sm:`/`hover:` en mutaciones).
+9. Snapshots / timeline real en StatusBar.
