@@ -245,6 +245,88 @@ export function tokensToCss(tokens: Tokens): string {
 }
 
 // ---------------------------------------------------------------------------
+// Sandbox utility CSS.
+//
+// The component preview renders inside an iframe that pulls Tailwind v3 Play
+// CDN — that build doesn't know about our `@theme` block and has no idea
+// `bg-primary` or `bg-surface` exist. So `ProjectTokensStyle`-style custom
+// properties in the parent document don't help the iframe paint anything.
+//
+// Fix: generate plain CSS rules (`:root { --color-… }` + one declaration
+// per utility class) and inject them as a <style> tag inside the iframe.
+// The generated utilities cover every family×variant combination plus
+// radii and font stacks, so any token class the user writes JUST WORKS.
+//
+// Intentionally narrow scope:
+//   - No hover/focus variants. Add if demand shows up; the plain utility
+//     covers static styling which is ~all a designer surface needs.
+//   - No dark mode. Same reason.
+//   - `rounded-*` only overrides keys that exist in `tokens.radii`. Keys
+//     Tailwind already ships (`rounded-2xl`, `rounded-3xl`) stay with
+//     Tailwind's defaults so existing components don't suddenly change.
+// ---------------------------------------------------------------------------
+
+export function tokensToSandboxCss(tokens: Tokens): string {
+  const lines: string[] = [];
+
+  // :root custom properties — so rules can reference var(--color-*) and
+  // users eyeballing devtools see the token values.
+  lines.push(":root {");
+  for (const [family, shades] of Object.entries(tokens.colors)) {
+    for (const [variant, value] of Object.entries(shades)) {
+      const name =
+        variant === "DEFAULT"
+          ? `--color-${family}`
+          : `--color-${family}-${variant}`;
+      lines.push(`  ${name}: ${value};`);
+    }
+  }
+  lines.push(`  --font-sans: ${tokens.fonts.sans};`);
+  lines.push(`  --font-mono: ${tokens.fonts.mono};`);
+  if (tokens.fonts.display) {
+    lines.push(`  --font-display: ${tokens.fonts.display};`);
+  }
+  for (const [k, v] of Object.entries(tokens.radii)) {
+    lines.push(`  --radius-${k}: ${v};`);
+  }
+  lines.push("}");
+
+  // Color utilities — bg / text / border for every family×variant.
+  for (const [family, shades] of Object.entries(tokens.colors)) {
+    for (const variant of Object.keys(shades)) {
+      const suffix =
+        variant === "DEFAULT" ? family : `${family}-${variant}`;
+      const varName =
+        variant === "DEFAULT"
+          ? `--color-${family}`
+          : `--color-${family}-${variant}`;
+      lines.push(
+        `.bg-${suffix} { background-color: var(${varName}); }`,
+        `.text-${suffix} { color: var(${varName}); }`,
+        `.border-${suffix} { border-color: var(${varName}); }`,
+      );
+    }
+  }
+
+  // Radius utilities — only for token keys (leaves Tailwind defaults like
+  // `rounded-2xl` alone).
+  for (const k of Object.keys(tokens.radii)) {
+    lines.push(`.rounded-${k} { border-radius: var(--radius-${k}); }`);
+  }
+
+  // Font utilities — override `font-sans` / `font-mono` / `font-display`
+  // so users feel token changes in the preview. Tailwind v3 Play generates
+  // these with its own defaults; ours win by source order.
+  lines.push(`.font-sans { font-family: var(--font-sans); }`);
+  lines.push(`.font-mono { font-family: var(--font-mono); }`);
+  if (tokens.fonts.display) {
+    lines.push(`.font-display { font-family: var(--font-display); }`);
+  }
+
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // Structural equality — cheap deep compare for `updateTokens` no-op short
 // circuit in the store. Keyed-by-reference would miss same-shape updates;
 // full JSON.stringify is the boring, correct choice at this scope.

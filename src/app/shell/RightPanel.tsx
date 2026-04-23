@@ -10,10 +10,13 @@ import { useProject } from "@/store/project";
 import { useMetrics } from "@/store/metrics";
 import { DesignSystemPanel } from "./DesignSystemPanel";
 import {
+  addClassesAtPath,
   getClassNameAtPath,
+  removeClassesAtPath,
   setClassAtPath,
 } from "@/ast/tailwind";
-import { PALETTE, PALETTE_BY_NAME, type PaletteColor } from "@/ast/palette";
+import { PALETTE, type PaletteColor } from "@/ast/palette";
+import type { Tokens } from "@/project/tokens";
 import { bindTextPropAtPath, listProps, unbindPropAtPath } from "@/ast/props";
 import { getTextAtPath, isTextLeaf } from "@/ast/text";
 import { parseSource } from "@/ast/parse";
@@ -97,6 +100,40 @@ const BORDER_WIDTHS = [
 ];
 const BORDER_WIDTH_VALUES = new Set(BORDER_WIDTHS.map((b) => b.value));
 
+// Border line style — Tailwind's `border-solid/dashed/dotted/double/none`.
+// Default is `border-solid` when a width is set, so a missing class here
+// reads as "solid" in the UI even though no class is emitted.
+const BORDER_STYLES = [
+  { value: "border-solid", label: "solid", css: "solid" },
+  { value: "border-dashed", label: "dashed", css: "dashed" },
+  { value: "border-dotted", label: "dotted", css: "dotted" },
+  { value: "border-double", label: "double", css: "double" },
+] as const;
+const BORDER_STYLE_VALUES: Set<string> = new Set(
+  BORDER_STYLES.map((s) => s.value),
+);
+
+// Per-corner radius corners. Tailwind has short axis-shortcuts
+// (`rounded-t-*` = top-left + top-right) too, but we resolve those at read
+// time into the four individual corners so the UI always deals with a
+// concrete 4-tuple.
+const RADIUS_CORNERS = [
+  { key: "tl", label: "TL", tailwindBase: "rounded-tl", shortAxis: ["t", "l"] },
+  { key: "tr", label: "TR", tailwindBase: "rounded-tr", shortAxis: ["t", "r"] },
+  { key: "br", label: "BR", tailwindBase: "rounded-br", shortAxis: ["b", "r"] },
+  { key: "bl", label: "BL", tailwindBase: "rounded-bl", shortAxis: ["b", "l"] },
+] as const;
+type CornerKey = (typeof RADIUS_CORNERS)[number]["key"];
+
+// Suffix of a `rounded-*` class → px value, so the corner panel can render
+// its hint next to each select the same way the unified radius does.
+function radiusSuffixPx(suffix: string | undefined): number | null {
+  if (suffix === undefined) return null;
+  if (suffix === "") return 4; // `rounded` with no suffix = 4px
+  const match = RADIUS_OPTIONS.find((r) => r.value === `rounded-${suffix}` || r.value === `rounded${suffix ? `-${suffix}` : ""}`);
+  return match?.px ?? null;
+}
+
 const STATE_TABS = ["base", "hover", "focus", "active"];
 
 const DISPLAY_OPTIONS: { value: string; icon: AppIconName; label: string }[] = [
@@ -165,6 +202,134 @@ function pxToScale(px: number): string {
   return best.n;
 }
 
+// ---------------------------------------------------------------------------
+// Token-aware color palette.
+//
+// The ColorDropdown used to resolve class names against the static Tailwind
+// palette only — so `bg-primary` (a project-token class) never lit up in the
+// selected-color chip. Now we build a merged palette where:
+//
+//   1. Token families come FIRST so they win on both lookup (map)
+//      and display (list). Users who rename a token and then open the
+//      dropdown see the new name + new hex immediately.
+//   2. Static Tailwind colors come second as a reference library.
+//
+// The merged structure keeps `kind` on each entry so the dropdown can
+// render a "Project tokens" section header and group them separately.
+// ---------------------------------------------------------------------------
+
+type ExtPaletteColor = PaletteColor & { kind: "token" | "static" };
+
+function buildTokenPalette(tokens: Tokens): ExtPaletteColor[] {
+  const out: ExtPaletteColor[] = [];
+  for (const [family, shades] of Object.entries(tokens.colors)) {
+    // DEFAULT first so the chip preview matches the family's base shade,
+    // then variants sorted alphabetically (matches the emitter's order
+    // and how DesignSystemPanel lists them).
+    const keys = Object.keys(shades).sort((a, b) => {
+      if (a === "DEFAULT") return -1;
+      if (b === "DEFAULT") return 1;
+      return a.localeCompare(b);
+    });
+    for (const v of keys) {
+      const name = v === "DEFAULT" ? family : `${family}-${v}`;
+      out.push({ name, hex: shades[v], kind: "token" });
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Gap helpers.
+//
+// Tailwind has three gap variants:
+//   - `gap-N`    both axes (the original single-input)
+//   - `gap-x-N`  column gap only (horizontal space between columns)
+//   - `gap-y-N`  row gap only    (vertical space between rows)
+//
+// The inspector surfaces this as two inputs (X + Y). When the user sets
+// both to the same value we collapse back to the unified `gap-N` for a
+// cleaner class list. When they diverge we emit the split pair. Reading
+// resolves `gap-N` into both axes so the initial view always has values
+// to render.
+// ---------------------------------------------------------------------------
+
+function readGapClasses(classes: string[]): {
+  unified: string | undefined;
+  x: string | undefined;
+  y: string | undefined;
+} {
+  return {
+    unified: classes.find((c) => /^gap-[\d.]+$/.test(c)),
+    x: classes.find((c) => /^gap-x-[\d.]+$/.test(c)),
+    y: classes.find((c) => /^gap-y-[\d.]+$/.test(c)),
+  };
+}
+
+function readGapN(classes: string[]): { x: string; y: string } {
+  const { unified, x, y } = readGapClasses(classes);
+  const uN = unified?.match(/^gap-([\d.]+)$/)?.[1];
+  const xN = x?.match(/^gap-x-([\d.]+)$/)?.[1] ?? uN ?? "0";
+  const yN = y?.match(/^gap-y-([\d.]+)$/)?.[1] ?? uN ?? "0";
+  return { x: xN, y: yN };
+}
+
+// ---------------------------------------------------------------------------
+// Per-corner radius helpers.
+//
+// Tailwind has four corner classes (`rounded-tl-*`, etc.), two axis
+// shortcuts (`rounded-t-*` = tl+tr, `rounded-b-*` = bl+br, `rounded-l-*` =
+// tl+bl, `rounded-r-*` = tr+br), and the unified `rounded-*`. We resolve
+// the effective per-corner value by checking most-specific → least-specific
+// (corner > axis > unified), matching CSS cascade intent.
+// ---------------------------------------------------------------------------
+
+const RADIUS_SUFFIXES = [
+  "none",
+  "sm",
+  "",
+  "md",
+  "lg",
+  "xl",
+  "2xl",
+  "3xl",
+  "full",
+] as const; // "" = `rounded` (4px base)
+
+function matchRadius(cls: string, prefix: string): string | null {
+  // e.g. prefix="rounded-tl" → matches "rounded-tl", "rounded-tl-md", etc.
+  if (cls === prefix) return "";
+  const m = new RegExp(`^${prefix}-(none|sm|md|lg|xl|2xl|3xl|full)$`).exec(cls);
+  return m ? m[1] : null;
+}
+
+function readCornerRadius(
+  classes: string[],
+  corner: (typeof RADIUS_CORNERS)[number],
+): string | null {
+  // Most specific wins: corner → axis → unified.
+  for (const c of classes) {
+    const m = matchRadius(c, corner.tailwindBase);
+    if (m !== null) return m;
+  }
+  for (const axis of corner.shortAxis) {
+    for (const c of classes) {
+      const m = matchRadius(c, `rounded-${axis}`);
+      if (m !== null) return m;
+    }
+  }
+  for (const c of classes) {
+    const m = matchRadius(c, "rounded");
+    if (m !== null) return m;
+  }
+  return null;
+}
+
+function cornersAllEqual(map: Record<CornerKey, string | null>): boolean {
+  const { tl, tr, br, bl } = map;
+  return tl === tr && tr === br && br === bl;
+}
+
 export function RightPanel() {
   const components = useProject((s) => s.components);
   const selectedId = useProject((s) => s.selectedComponentId);
@@ -200,7 +365,40 @@ export function RightPanel() {
 
   const find = (pred: (c: string) => boolean) => classes.find(pred);
 
-  const currentPadding = find((c) => /^p-/.test(c));
+  // Palette is built FIRST so class-detection can use it to tell a real color
+  // class (bg-primary-soft, bg-emerald-500, border-surface-ink) apart from
+  // Tailwind's many other prefix-sharing utilities (bg-opacity-50,
+  // bg-gradient-to-r, border-solid, border-0). Previous regex-only checks
+  // either missed token-named classes or false-matched non-colors.
+  const tokens = useProject((s) => s.tokens);
+  const tokenPalette = useMemo(() => buildTokenPalette(tokens), [tokens]);
+  const mergedPalette = useMemo<ExtPaletteColor[]>(
+    () => [
+      ...tokenPalette,
+      ...PALETTE.map<ExtPaletteColor>((p) => ({ ...p, kind: "static" })),
+    ],
+    [tokenPalette],
+  );
+  const mergedByName = useMemo(() => {
+    const m = new Map<string, ExtPaletteColor>();
+    // Static first so tokens override any name collision (e.g., user names
+    // a family `blue` — their blue wins over the hardcoded Tailwind `blue`).
+    for (const p of PALETTE) m.set(p.name, { ...p, kind: "static" });
+    for (const t of tokenPalette) m.set(t.name, t);
+    return m;
+  }, [tokenPalette]);
+
+  // Is this a color class we understand? A class like "bg-primary-soft"
+  // or "border-neutral-ink" passes; "bg-opacity-50" or "border-solid"
+  // doesn't. Looked up against the merged palette so project tokens Just
+  // Work™ alongside the Tailwind reference palette.
+  const findColorClass = (prefix: string): string | undefined =>
+    classes.find(
+      (c) =>
+        c.startsWith(`${prefix}-`) &&
+        mergedByName.has(c.slice(prefix.length + 1)),
+    );
+
   const currentGap = find((c) => /^gap-/.test(c));
   const currentDisplay = find((c) => DISPLAY_VALUES.has(c));
   const currentDirection = find((c) => DIRECTION_VALUES.has(c));
@@ -213,14 +411,39 @@ export function RightPanel() {
   const currentWeight = find((c) => FONT_WEIGHT_VALUES.has(c));
   const currentAlign = find((c) => TEXT_ALIGN_VALUES.has(c));
 
-  const currentBg = find((c) => /^bg-/.test(c));
-  const currentTextColor = find(
-    (c) => /^text-/.test(c) && !TEXT_SIZE_VALUES.has(c) && !TEXT_ALIGN_VALUES.has(c),
-  );
-  const currentBorderColor = find((c) => /^border-(?:[a-z]+)-\d+$/.test(c));
+  const currentBg = findColorClass("bg");
+  const currentTextColor = findColorClass("text");
+  const currentBorderColor = findColorClass("border");
 
   const currentRadius = find((c) => RADIUS_VALUES.has(c));
   const currentBorderW = find((c) => BORDER_WIDTH_VALUES.has(c)) ?? "border-0";
+  const currentBorderStyle = find((c) => BORDER_STYLE_VALUES.has(c));
+
+  // Per-corner radius map — if any corner or axis class is set, the UI
+  // auto-reveals the 4-corner editor. Users can also toggle manually via
+  // the header chip; `radiusSplit` captures that manual intent.
+  const cornerMap = useMemo(() => {
+    return {
+      tl: readCornerRadius(classes, RADIUS_CORNERS[0]),
+      tr: readCornerRadius(classes, RADIUS_CORNERS[1]),
+      br: readCornerRadius(classes, RADIUS_CORNERS[2]),
+      bl: readCornerRadius(classes, RADIUS_CORNERS[3]),
+    } as Record<CornerKey, string | null>;
+  }, [classes]);
+  const hasPerCornerClass = useMemo(
+    () =>
+      classes.some((c) =>
+        /^rounded-(?:tl|tr|br|bl|t|b|l|r)(?:-(?:none|sm|md|lg|xl|2xl|3xl|full))?$/.test(c),
+      ),
+    [classes],
+  );
+  const [radiusSplit, setRadiusSplit] = useState(false);
+  const radiusSplitOpen = radiusSplit || hasPerCornerClass;
+
+  // Gap: decoupled X/Y. Unified `gap-N` is resolved into both axes so the
+  // initial render isn't blank when the file uses the old single-class form.
+  const gapClasses = useMemo(() => readGapClasses(classes), [classes]);
+  const gapN = useMemo(() => readGapN(classes), [classes]);
 
   const baselineRef = useRef<string | null>(null);
 
@@ -257,21 +480,123 @@ export function RightPanel() {
     swap(oldClass, next);
     clearBaseline();
   };
-  const previewColor = (oldClass: string | undefined, prefix: string) => ({
+  // Color writer — unlike `swap`, this first *clears* every color class with
+  // the given prefix (stale `bg-neutral-soft` from a previous tweak etc.)
+  // before emitting the new one. Required because Tailwind's cascade makes
+  // duplicate `bg-*` classes silently pick the last one at render time
+  // while the inspector still reads the first — yielding the classic
+  // "the dropdown says surface but the background is gray" bug.
+  const writeColor = (prefix: string, nextName: string) => {
+    if (!component) return;
+    try {
+      const base = baselineRef.current ?? component.source;
+      const cleared = removeClassesAtPath(
+        base,
+        path,
+        (c) =>
+          c.startsWith(`${prefix}-`) &&
+          mergedByName.has(c.slice(prefix.length + 1)),
+      );
+      const updated = nextName
+        ? addClassesAtPath(cleared, path, [`${prefix}-${nextName}`])
+        : cleared;
+      setSource(component.id, updated);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+  const previewColor = (_oldClass: string | undefined, prefix: string) => ({
     onOpen: captureBaseline,
-    onHover: (name: string) => name && swap(oldClass, `${prefix}-${name}`),
+    onHover: (name: string) => name && writeColor(prefix, name),
     onCancel: cancelPreview,
   });
 
-  const colorName = (cls: string | undefined, prefix: string): PaletteColor | undefined => {
+  const colorName = (
+    cls: string | undefined,
+    prefix: string,
+  ): ExtPaletteColor | undefined => {
     if (!cls) return undefined;
     const name = cls.replace(new RegExp(`^${prefix}-`), "");
-    return PALETTE_BY_NAME.get(name);
+    return mergedByName.get(name);
   };
 
   const bgColor = colorName(currentBg, "bg");
   const textColor = colorName(currentTextColor, "text");
   const borderColor = colorName(currentBorderColor, "border");
+
+  // Batched writer for gap — remove ALL existing gap-* classes, then emit
+  // either the unified form or the split pair. All mutations share one
+  // baseline string so we don't lose intermediate edits to parse errors.
+  const writeGapBoth = (nextX: string, nextY: string) => {
+    if (!component) return;
+    let src = component.source;
+    const op = (oldC: string, newC: string) => {
+      try {
+        src = setClassAtPath(src, path, oldC, newC);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    if (gapClasses.unified) op(gapClasses.unified, "");
+    if (gapClasses.x) op(gapClasses.x, "");
+    if (gapClasses.y) op(gapClasses.y, "");
+    if (nextX === nextY) {
+      const cls = `gap-${nextX}`;
+      op(cls, cls);
+    } else {
+      const xc = `gap-x-${nextX}`;
+      const yc = `gap-y-${nextY}`;
+      op(xc, xc);
+      op(yc, yc);
+    }
+    setSource(component.id, src);
+  };
+
+  // Batched writer for per-corner radius. Similar shape: clear every
+  // rounded-* (corner, axis, unified), then emit four corners — or the
+  // unified form when all four corners match.
+  const writeCornerRadius = (corner: CornerKey, suffix: string) => {
+    if (!component) return;
+    const next: Record<CornerKey, string> = {
+      tl: cornerMap.tl ?? "none",
+      tr: cornerMap.tr ?? "none",
+      br: cornerMap.br ?? "none",
+      bl: cornerMap.bl ?? "none",
+    };
+    next[corner] = suffix;
+    let src = component.source;
+    const op = (oldC: string, newC: string) => {
+      try {
+        src = setClassAtPath(src, path, oldC, newC);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    // Remove every rounded-* class we know about.
+    for (const c of [...classes]) {
+      if (
+        /^rounded(?:-(?:tl|tr|br|bl|t|b|l|r))?(?:-(?:none|sm|md|lg|xl|2xl|3xl|full))?$/.test(
+          c,
+        )
+      ) {
+        op(c, "");
+      }
+    }
+    const allEqual =
+      next.tl === next.tr && next.tr === next.br && next.br === next.bl;
+    if (allEqual) {
+      const cls = next.tl === "" ? "rounded" : `rounded-${next.tl}`;
+      op(cls, cls);
+    } else {
+      for (const c of RADIUS_CORNERS) {
+        const s = next[c.key];
+        if (s === "none") continue; // `rounded-X-none` is rarely needed; omit → inherits 0
+        const cls = s === "" ? c.tailwindBase : `${c.tailwindBase}-${s}`;
+        op(cls, cls);
+      }
+    }
+    setSource(component.id, src);
+  };
 
   return (
     <aside className="flex h-full w-full min-w-0 flex-1 flex-col overflow-x-hidden border-l border-stroke bg-panel text-[12px]">
@@ -391,26 +716,29 @@ export function RightPanel() {
               showLabel
             />
           </DualRow>
-          <DualRow
-            label="Gap"
-            scrub={{
-              current: currentGap ?? "gap-0",
-              values: SPACING_SCALE.map((s) => `gap-${s.n}`),
-              onChange: (v) => swap(currentGap, v),
-              onCommit: clearBaseline,
-              onStart: captureBaseline,
-            }}
-          >
-            <SpacingSelect
-              current={currentGap}
-              prefix="gap"
-              onChange={(v) => commit(currentGap, v)}
-              preview={preview(currentGap)}
+          {/* Gap is two independent inputs — horizontal (gap-x, space between
+              columns) and vertical (gap-y, space between rows). Setting both
+              to the same value collapses back to the tidy `gap-N` unified
+              form in the class list. Arrows on the hint are a lightweight
+              axis marker so users don't need to remember x/y. */}
+          <DualRow label="Gap">
+            <SpacingAxisSelect
+              n={gapN.x}
+              axisHint="↔"
+              onChange={(n) => writeGapBoth(n, gapN.y)}
+              onStart={captureBaseline}
+              onCommit={clearBaseline}
+              onCancel={cancelPreview}
+              onHover={(n) => writeGapBoth(n, gapN.y)}
             />
-            <InputBox
-              value={String(spacingPx(currentGap, "gap-") ?? 0)}
-              hint="px"
-              readOnly
+            <SpacingAxisSelect
+              n={gapN.y}
+              axisHint="↕"
+              onChange={(n) => writeGapBoth(gapN.x, n)}
+              onStart={captureBaseline}
+              onCommit={clearBaseline}
+              onCancel={cancelPreview}
+              onHover={(n) => writeGapBoth(gapN.x, n)}
             />
           </DualRow>
         </Group>
@@ -556,7 +884,11 @@ export function RightPanel() {
           <DualRow label="Fill">
             <ColorDropdown
               color={bgColor}
-              onChange={(name) => commit(currentBg, `bg-${name}`)}
+              palette={mergedPalette}
+              onChange={(name) => {
+                writeColor("bg", name);
+                clearBaseline();
+              }}
               full
               {...previewColor(currentBg, "bg")}
             />
@@ -564,7 +896,11 @@ export function RightPanel() {
           <DualRow label="Text">
             <ColorDropdown
               color={textColor}
-              onChange={(name) => commit(currentTextColor, `text-${name}`)}
+              palette={mergedPalette}
+              onChange={(name) => {
+                writeColor("text", name);
+                clearBaseline();
+              }}
               full
               {...previewColor(currentTextColor, "text")}
             />
@@ -572,15 +908,42 @@ export function RightPanel() {
           <DualRow label="Border">
             <ColorDropdown
               color={borderColor}
+              palette={mergedPalette}
               placeholder="none"
-              onChange={(name) => commit(currentBorderColor, `border-${name}`)}
+              onChange={(name) => {
+                writeColor("border", name);
+                clearBaseline();
+              }}
               full
               {...previewColor(currentBorderColor, "border")}
             />
           </DualRow>
         </Group>
 
-        <Group title="Borders">
+        <Group
+          title="Borders"
+          headerRight={
+            <button
+              onClick={() => setRadiusSplit((v) => !v)}
+              title={
+                radiusSplitOpen
+                  ? "Unify radius — set all corners together"
+                  : "Per-corner radius — TL / TR / BR / BL"
+              }
+              className={
+                "flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] transition " +
+                (radiusSplitOpen
+                  ? "bg-accent-tint text-accent-ink"
+                  : "text-ink-muted hover:bg-panel-soft hover:text-ink")
+              }
+            >
+              <AppIcon name={radiusSplitOpen ? "LayoutGrid" : "Square"} size={11} />
+              {radiusSplitOpen ? "corners" : "unified"}
+            </button>
+          }
+        >
+          {/* Unified radius — still editable even in per-corner mode,
+              where it acts as "set all four at once". */}
           <DualRow
             label="Radius"
             scrub={{
@@ -604,8 +967,33 @@ export function RightPanel() {
               onChange={(v) => commit(currentRadius, v)}
               {...preview(currentRadius)}
             />
-            <InputBox value="all" hint="—" readOnly />
+            {/* Live preview of the effective radius. In unified mode this is
+                the selected size; in per-corner mode it shows an outlined
+                rectangle with the four corner values applied — so the class
+                list's net shape is immediately visible. */}
+            <RadiusPreview
+              unifiedPx={
+                RADIUS_OPTIONS.find((r) => r.value === currentRadius)?.px ?? 0
+              }
+              perCorner={
+                radiusSplitOpen
+                  ? {
+                      tl: radiusSuffixPx(cornerMap.tl ?? undefined) ?? 0,
+                      tr: radiusSuffixPx(cornerMap.tr ?? undefined) ?? 0,
+                      br: radiusSuffixPx(cornerMap.br ?? undefined) ?? 0,
+                      bl: radiusSuffixPx(cornerMap.bl ?? undefined) ?? 0,
+                    }
+                  : null
+              }
+            />
           </DualRow>
+          {radiusSplitOpen ? (
+            <CornerRadiusGrid
+              cornerMap={cornerMap}
+              onChange={writeCornerRadius}
+              allEqual={cornersAllEqual(cornerMap)}
+            />
+          ) : null}
           <DualRow
             label="Width"
             scrub={{
@@ -637,6 +1025,37 @@ export function RightPanel() {
               readOnly
             />
           </DualRow>
+          <DualRow label="Style">
+            <SelectBox
+              value={currentBorderStyle ?? "border-solid"}
+              hint={(currentBorderStyle ?? "border-solid").replace(
+                "border-",
+                "",
+              )}
+              options={BORDER_STYLES.map((s) => ({
+                value: s.value,
+                label: s.label,
+                right: s.label,
+              }))}
+              onChange={(v) => commit(currentBorderStyle, v)}
+              {...preview(currentBorderStyle)}
+            />
+            {/* Visual hint: a thin sample line with the chosen style so the
+                user sees dashed vs dotted vs double without committing. */}
+            <div className="flex h-7 items-center rounded-md border border-stroke bg-white px-2">
+              <span
+                className="h-0 w-full"
+                style={{
+                  borderTopWidth: 3,
+                  borderTopStyle:
+                    (BORDER_STYLES.find(
+                      (s) => s.value === (currentBorderStyle ?? "border-solid"),
+                    )?.css as React.CSSProperties["borderTopStyle"]) ?? "solid",
+                  borderTopColor: "#64748b",
+                }}
+              />
+            </div>
+          </DualRow>
         </Group>
 
         <Group title="Effects" headerRight={<AddButton />}>
@@ -659,13 +1078,6 @@ function stripPrefix(value: string | undefined, prefix: string): string | null {
   if (!value) return null;
   if (!value.startsWith(prefix)) return null;
   return value.slice(prefix.length);
-}
-
-function spacingPx(value: string | undefined, prefix: string): number | null {
-  if (!value) return null;
-  const raw = value.slice(prefix.length);
-  const entry = SPACING_SCALE.find((s) => s.n === raw);
-  return entry?.px ?? null;
 }
 
 function PanelTab({
@@ -710,7 +1122,7 @@ function Group({
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
         <button
           onClick={() => setOpen((o) => !o)}
-          className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-ink-soft"
+          className="flex items-center gap-1 text-[11px] font-normal text-ink-soft"
         >
           <AppIcon name={open ? "ChevronDown" : "ChevronRight"} size={11} className="text-ink-faint" />
           {title}
@@ -800,7 +1212,7 @@ function BoxModel({
   return (
     <div className="col-span-full -mx-1 rounded-md border border-stroke bg-panel-soft px-2 py-3">
       <div className="relative">
-        <span className="absolute left-1 top-1 text-[9px] font-medium uppercase tracking-wider text-ink-faint">
+        <span className="absolute left-1 top-1 text-[10px] font-normal text-ink-faint">
           Margin
         </span>
         <div className="mx-auto flex w-full flex-col items-center">
@@ -1179,41 +1591,148 @@ function SelectBox({
   );
 }
 
-function SpacingSelect({
-  current,
-  prefix,
-  onChange,
-  preview,
+// Live visual preview of the current radius, shown on the right of the
+// Radius dropdown. In unified mode it renders a square with the uniform
+// radius applied; in per-corner mode each corner uses its own value so you
+// see the actual shape you're building.
+function RadiusPreview({
+  unifiedPx,
+  perCorner,
 }: {
-  current: string | undefined;
-  prefix: string;
-  onChange: (v: string) => void;
-  preview?: {
-    onOpen?: () => void;
-    onHover?: (v: string) => void;
-    onCancel?: () => void;
-  };
+  unifiedPx: number;
+  perCorner: Record<CornerKey, number> | null;
 }) {
-  const value = current ?? `${prefix}-0`;
-  const label = value.replace(`${prefix}-`, "") || "0";
+  // Clamp preview sizes so rounded-full doesn't blow past the cell height.
+  const cap = (v: number) => Math.min(v, 13);
+  const style: React.CSSProperties = perCorner
+    ? {
+        borderTopLeftRadius: cap(perCorner.tl),
+        borderTopRightRadius: cap(perCorner.tr),
+        borderBottomRightRadius: cap(perCorner.br),
+        borderBottomLeftRadius: cap(perCorner.bl),
+      }
+    : { borderRadius: cap(unifiedPx) };
+  return (
+    <div className="flex h-7 items-center justify-center rounded-md border border-stroke bg-white px-2">
+      <div
+        className="h-5 w-8 border border-ink-faint/70 bg-accent-tint"
+        style={style}
+      />
+    </div>
+  );
+}
+
+// Per-corner radius grid — 2x2 of SelectBoxes, visually arranged as they
+// appear on the shape (TL top-left, TR top-right, BL bottom-left, BR
+// bottom-right). Compact because borders already take up a lot of the
+// inspector.
+function CornerRadiusGrid({
+  cornerMap,
+  onChange,
+  allEqual,
+}: {
+  cornerMap: Record<CornerKey, string | null>;
+  onChange: (corner: CornerKey, suffix: string) => void;
+  allEqual: boolean;
+}) {
+  const options = RADIUS_SUFFIXES.map((s) => {
+    const cls = s === "" ? "rounded" : `rounded-${s}`;
+    const px = RADIUS_OPTIONS.find((r) => r.value === cls)?.px ?? 0;
+    return {
+      value: s,
+      label: s === "" ? "4px" : s,
+      right: `${px}px`,
+    };
+  });
+  const render = (c: CornerKey, labelAlign: string) => {
+    const cur = cornerMap[c] ?? "none";
+    const px = radiusSuffixPx(cornerMap[c] ?? undefined) ?? 0;
+    return (
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span
+          className={
+            "text-[9px] font-mono uppercase text-ink-faint " + labelAlign
+          }
+        >
+          {c}
+        </span>
+        <SelectBox
+          value={cur}
+          hint={String(px)}
+          options={options}
+          onChange={(v) => onChange(c, v)}
+        />
+      </div>
+    );
+  };
+  return (
+    <div
+      className={
+        "grid grid-cols-2 gap-1.5 rounded-md border border-dashed p-2 transition " +
+        (allEqual
+          ? "border-stroke bg-panel-soft/30"
+          : "border-accent/30 bg-accent-tint/40")
+      }
+      title={
+        allEqual
+          ? "All corners match — will save as the unified rounded-* class."
+          : "Corners differ — each will save as rounded-tl/tr/br/bl-*."
+      }
+    >
+      {render("tl", "text-left")}
+      {render("tr", "text-right")}
+      {render("bl", "text-left")}
+      {render("br", "text-right")}
+    </div>
+  );
+}
+
+// Variant of SpacingSelect that works with raw scale numbers ("0", "1",
+// "1.5"…) rather than full class names. Used by the split gap row where
+// each axis needs its own value independent of the prefix (gap-x vs gap-y).
+// The `axisHint` slot shows a tiny arrow so X/Y are obvious.
+function SpacingAxisSelect({
+  n,
+  axisHint,
+  onChange,
+  onStart,
+  onCommit,
+  onCancel,
+  onHover,
+}: {
+  n: string;
+  axisHint: string;
+  onChange: (n: string) => void;
+  onStart?: () => void;
+  onCommit?: () => void;
+  onCancel?: () => void;
+  onHover?: (n: string) => void;
+}) {
   const options = SPACING_SCALE.map((s) => ({
-    value: `${prefix}-${s.n}`,
-    label: `${prefix}-${s.n}`,
+    value: s.n,
+    label: s.n,
     right: `${s.px}px`,
   }));
   return (
     <SelectBox
-      value={value}
-      hint={label}
+      value={n}
+      hint={`${axisHint} ${n}`}
       options={options}
-      onChange={onChange}
-      {...preview}
+      onChange={(v) => {
+        onStart?.();
+        onChange(v);
+        onCommit?.();
+      }}
+      onOpen={onStart}
+      onHover={onHover}
+      onCancel={onCancel}
     />
   );
 }
 
 function ColorDropdown({
   color,
+  palette,
   onChange,
   placeholder,
   full,
@@ -1221,7 +1740,8 @@ function ColorDropdown({
   onHover,
   onCancel,
 }: {
-  color: PaletteColor | undefined;
+  color: ExtPaletteColor | undefined;
+  palette: ExtPaletteColor[];
   onChange: (name: string) => void;
   placeholder?: string;
   full?: boolean;
@@ -1236,15 +1756,21 @@ function ColorDropdown({
     if (cancel) onCancel?.();
   };
   const ref = useOutsideClick<HTMLDivElement>(open, () => close(true));
-  const filtered = useMemo(
-    () =>
-      q
-        ? PALETTE.filter((p) =>
-            p.name.toLowerCase().includes(q.toLowerCase()),
-          )
-        : PALETTE,
-    [q],
-  );
+  // Partition the palette into project tokens (top, grouped under a
+  // "Project tokens" header) and the Tailwind reference palette below.
+  // Filter is case-insensitive substring over name.
+  const { tokenRows, staticRows } = useMemo(() => {
+    const filtered = q
+      ? palette.filter((p) =>
+          p.name.toLowerCase().includes(q.toLowerCase()),
+        )
+      : palette;
+    return {
+      tokenRows: filtered.filter((p) => p.kind === "token"),
+      staticRows: filtered.filter((p) => p.kind === "static"),
+    };
+  }, [q, palette]);
+
   return (
     <div ref={ref} className={"relative " + (full ? "col-span-2" : "")}>
       <button
@@ -1270,7 +1796,12 @@ function ColorDropdown({
         ) : (
           <span className="size-4 shrink-0 rounded-[4px] border border-stroke bg-[linear-gradient(135deg,transparent_calc(50%-1px),#ef4444_calc(50%-1px),#ef4444_calc(50%+1px),transparent_calc(50%+1px))]" />
         )}
-        <span className="min-w-0 flex-1 truncate text-left text-[11px] text-ink">
+        <span
+          className={
+            "min-w-0 flex-1 truncate text-left text-[11px] " +
+            (color?.kind === "token" ? "text-accent-ink" : "text-ink")
+          }
+        >
           {color?.name ?? placeholder ?? "—"}
         </span>
         <span className="shrink-0 font-mono text-[10px] uppercase text-ink-faint">
@@ -1288,43 +1819,48 @@ function ColorDropdown({
               autoFocus
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search color (e.g. emerald-600)"
+              placeholder="Search color (e.g. primary, emerald-600)"
               className="min-w-0 flex-1 bg-transparent text-[11px] outline-none"
             />
           </div>
           <div className="mt-1 max-h-64 overflow-auto">
-            {filtered.map((p) => {
-              const active = color?.name === p.name;
-              return (
-                <button
-                  key={p.name}
-                  onMouseEnter={() => onHover?.(p.name)}
-                  onClick={() => {
-                    onChange(p.name);
-                    close(false);
-                  }}
-                  className={
-                    "flex w-full items-center gap-2 rounded px-1.5 py-1 text-[11px] " +
-                    (active ? "bg-accent-tint" : "hover:bg-panel-soft")
-                  }
-                >
-                  <span
-                    className="size-4 shrink-0 rounded-[4px] border border-stroke"
-                    style={{
-                      backgroundColor:
-                        p.hex === "transparent" ? "#fff" : p.hex,
+            {tokenRows.length > 0 ? (
+              <>
+                <ColorGroupHeader label="Project tokens" />
+                {tokenRows.map((p) => (
+                  <ColorRow
+                    key={`t:${p.name}`}
+                    p={p}
+                    active={color?.name === p.name && color.kind === "token"}
+                    onHover={onHover}
+                    onPick={(name) => {
+                      onChange(name);
+                      close(false);
                     }}
                   />
-                  <span className="min-w-0 flex-1 truncate text-left font-mono text-ink">
-                    {p.name}
-                  </span>
-                  <span className="shrink-0 font-mono text-[10px] uppercase text-ink-faint">
-                    {p.hex}
-                  </span>
-                </button>
-              );
-            })}
-            {filtered.length === 0 ? (
+                ))}
+              </>
+            ) : null}
+            {staticRows.length > 0 ? (
+              <>
+                <ColorGroupHeader
+                  label={tokenRows.length > 0 ? "Tailwind palette" : "Palette"}
+                />
+                {staticRows.map((p) => (
+                  <ColorRow
+                    key={`s:${p.name}`}
+                    p={p}
+                    active={color?.name === p.name && color.kind === "static"}
+                    onHover={onHover}
+                    onPick={(name) => {
+                      onChange(name);
+                      close(false);
+                    }}
+                  />
+                ))}
+              </>
+            ) : null}
+            {tokenRows.length === 0 && staticRows.length === 0 ? (
               <div className="px-2 py-2 text-[10.5px] text-ink-faint">
                 No match
               </div>
@@ -1333,6 +1869,55 @@ function ColorDropdown({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ColorGroupHeader({ label }: { label: string }) {
+  return (
+    <div className="sticky top-0 z-10 bg-white px-1.5 pb-0.5 pt-1.5 text-[10px] font-normal text-ink-faint">
+      {label}
+    </div>
+  );
+}
+
+function ColorRow({
+  p,
+  active,
+  onHover,
+  onPick,
+}: {
+  p: ExtPaletteColor;
+  active: boolean;
+  onHover?: (name: string) => void;
+  onPick: (name: string) => void;
+}) {
+  return (
+    <button
+      onMouseEnter={() => onHover?.(p.name)}
+      onClick={() => onPick(p.name)}
+      className={
+        "flex w-full items-center gap-2 rounded px-1.5 py-1 text-[11px] " +
+        (active ? "bg-accent-tint" : "hover:bg-panel-soft")
+      }
+    >
+      <span
+        className="size-4 shrink-0 rounded-[4px] border border-stroke"
+        style={{
+          backgroundColor: p.hex === "transparent" ? "#fff" : p.hex,
+        }}
+      />
+      <span
+        className={
+          "min-w-0 flex-1 truncate text-left font-mono " +
+          (p.kind === "token" ? "text-accent-ink" : "text-ink")
+        }
+      >
+        {p.name}
+      </span>
+      <span className="shrink-0 font-mono text-[10px] uppercase text-ink-faint">
+        {p.hex}
+      </span>
+    </button>
   );
 }
 

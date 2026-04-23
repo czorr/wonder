@@ -406,7 +406,7 @@ function FilesPanel({
           ))
         )}
 
-        <TreeFile label="tailwind.config.ts" config />
+        <TailwindConfigEntry />
 
         <div className="mt-5">
           <PrimitivesPalette query={q} onPrimitiveClick={onPrimitiveClick} />
@@ -818,6 +818,49 @@ function TreeFile({
           cfg
         </span>
       ) : null}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// `tailwind.config.ts` entry — not a component file, but a pseudo-file that
+// opens the full-screen TokensStudio (design tokens = Tailwind v4 `@theme`
+// config in Wonder's world). Active state reflects `centerView === "tokens"`
+// so clicking it again while already open is a no-op instead of closing —
+// the studio has its own explicit close button for that.
+// ---------------------------------------------------------------------------
+
+function TailwindConfigEntry() {
+  const centerView = useLayout((s) => s.centerView);
+  const setCenterView = useLayout((s) => s.setCenterView);
+  const active = centerView === "tokens";
+
+  return (
+    <button
+      onClick={() => setCenterView("tokens")}
+      className={
+        "group flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 " +
+        (active
+          ? "bg-accent-tint text-accent-ink"
+          : "text-ink-soft hover:bg-panel-soft")
+      }
+      title="Open design tokens studio"
+    >
+      <AppIcon
+        name="FileCode"
+        size={13}
+        className={active ? "text-accent" : "text-ink-faint"}
+      />
+      <span className="flex-1 truncate text-left">tailwind.config.ts</span>
+      {active ? <span className="size-1.5 rounded-full bg-accent" /> : null}
+      <span
+        className={
+          "text-[9px] font-medium uppercase " +
+          (active ? "text-accent/80" : "text-ink-faint")
+        }
+      >
+        cfg
+      </span>
     </button>
   );
 }

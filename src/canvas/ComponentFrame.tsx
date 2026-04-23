@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Sandbox, type SandboxHandle } from "@/sandbox/Sandbox";
 import { bundle } from "@/sandbox/bundler";
 import { HOT_RELOAD_DEBOUNCE_MS } from "@/constants";
 import { useProject, type WonderComponent } from "@/store/project";
+import { tokensToSandboxCss } from "@/project/tokens";
 import { useMetrics } from "@/store/metrics";
 import { useChat } from "@/store/chat";
 import type { Rect } from "@/sandbox/messaging";
@@ -52,6 +53,22 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
   // component — overlay a pixel-grid loader and disable user input so the
   // user doesn't fight the AI mid-edit.
   const isBusy = useChat((s) => !!s.busyComponents[component.id]);
+
+  // Token-driven utility CSS that the sandbox iframe needs — Tailwind v3
+  // Play CDN inside the iframe has no idea `bg-primary`, `bg-surface`,
+  // `text-neutral-ink`, `rounded-md` exist. We generate the rules here,
+  // and push them into the iframe via the sandbox handle. Useful to keep
+  // `useMemo` — token edits fire store updates for every keystroke during
+  // a color scrub, so stable identity means we skip pushing identical CSS.
+  const tokens = useProject((s) => s.tokens);
+  const tokensCss = useMemo(() => tokensToSandboxCss(tokens), [tokens]);
+
+  // Push tokens on every change AND when the iframe signals ready. Note
+  // we send even before the first render — the Sandbox buffers pre-ready
+  // messages, so the initial paint already has the design system applied.
+  useEffect(() => {
+    sandboxRef.current?.setTokensCss(tokensCss);
+  }, [tokensCss, ready]);
 
   useEffect(() => {
     if (!ready) return;

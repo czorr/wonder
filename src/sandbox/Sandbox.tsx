@@ -16,6 +16,8 @@ export type SandboxHandle = {
   setProps: (props: Record<string, unknown>) => void;
   setSelection: (path: string | null) => void;
   setViewport: (width: number | null) => void;
+  /** Push fresh token utility CSS into the iframe's <style id="wonder-tokens">. */
+  setTokensCss: (css: string) => void;
 };
 
 type SandboxProps = {
@@ -50,6 +52,11 @@ export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [ready, setReady] = useState(false);
   const pendingRef = useRef<SandboxOutgoing | null>(null);
+  // Tokens CSS has its own slot — it should be applied BEFORE the first
+  // render so the component doesn't flash unstyled with Tailwind-unknown
+  // classes (bg-primary, etc). Single slot is fine: tokens are idempotent,
+  // and only the latest payload matters at boot.
+  const pendingTokensRef = useRef<string | null>(null);
 
   useEffect(() => {
     function onMessage(e: MessageEvent) {
@@ -60,6 +67,18 @@ export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
         case "sandbox:ready":
           setReady(true);
           onReady?.();
+          // Flush tokens first so the initial render paints with the
+          // project's design system already in place.
+          if (pendingTokensRef.current != null) {
+            iframeRef.current?.contentWindow?.postMessage(
+              {
+                type: "sandbox:setTokensCss",
+                css: pendingTokensRef.current,
+              } satisfies SandboxOutgoing,
+              "*",
+            );
+            pendingTokensRef.current = null;
+          }
           if (pendingRef.current) {
             iframeRef.current?.contentWindow?.postMessage(
               pendingRef.current,
@@ -135,6 +154,14 @@ export const Sandbox = forwardRef<SandboxHandle, SandboxProps>(function Sandbox(
           { type: "sandbox:setViewport", width } satisfies SandboxOutgoing,
           "*",
         );
+      },
+      setTokensCss(css) {
+        const msg: SandboxOutgoing = { type: "sandbox:setTokensCss", css };
+        if (ready && iframeRef.current?.contentWindow) {
+          iframeRef.current.contentWindow.postMessage(msg, "*");
+        } else {
+          pendingTokensRef.current = css;
+        }
       },
     }),
     [ready],

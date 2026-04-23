@@ -212,6 +212,20 @@
             document.getElementById("root").style.display = "inline-block";
             document.getElementById("root").style.width = "";
           }
+        } else if (msg.type === "sandbox:setTokensCss") {
+          // Replace (or create) the <style id="wonder-tokens"> tag. We re-set
+          // .textContent rather than recreate the node to avoid a paint flash
+          // while the user edits a token — same node, same cascade slot,
+          // browsers just swap the rules in place.
+          let style = document.getElementById("wonder-tokens");
+          if (!style) {
+            style = document.createElement("style");
+            style.id = "wonder-tokens";
+            // Append to head AFTER Tailwind's own injected rules so ours win
+            // on equal-specificity (same .bg-primary) without !important.
+            document.head.appendChild(style);
+          }
+          style.textContent = msg.css || "";
         }
       });
 

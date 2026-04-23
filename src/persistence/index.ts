@@ -25,3 +25,4 @@ export {
   actionSaveAs,
   loadProjectFromPath,
 } from "./actions";
+export { initAutosave, flushAutosave, lastAutosaveError } from "./autosave";

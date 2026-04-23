@@ -63,7 +63,14 @@ export type SandboxOutgoing =
   | { type: "sandbox:render"; code: string; props?: Record<string, unknown> }
   | { type: "sandbox:setProps"; props: Record<string, unknown> }
   | { type: "sandbox:setSelection"; path: string | null }
-  | { type: "sandbox:setViewport"; width: number | null };
+  | { type: "sandbox:setViewport"; width: number | null }
+  /**
+   * Replace the <style id="wonder-tokens"> rule set inside the iframe. Sent
+   * when project tokens change so `bg-primary`, `text-surface-ink`, etc.
+   * pick up the user's current values — Tailwind Play CDN inside the iframe
+   * has no idea those utilities exist otherwise.
+   */
+  | { type: "sandbox:setTokensCss"; css: string };
 
 export function isSandboxMessage(data: unknown): data is SandboxIncoming {
   return (

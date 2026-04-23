@@ -29,6 +29,21 @@ export const LAYOUT_BOUNDS = {
   chatMin: 340,
 } as const;
 
+/**
+ * What fills the middle of the shell (between the two side panels).
+ *
+ *   - "canvas"  → the regular editor: CanvasArea + CodePanel.
+ *   - "tokens"  → TokensStudio: a full-height design-system editor that
+ *                 replaces both canvas and code. Opened by clicking the
+ *                 `tailwind.config.ts` entry in the file tree; closed via
+ *                 the studio's own close button (which snaps back to
+ *                 "canvas").
+ *
+ * Persisting this means the user who last left the app with the tokens
+ * studio open comes back to it — matches the sidebar/width behavior.
+ */
+export type CenterView = "canvas" | "tokens";
+
 type LayoutState = {
   leftWidth: number;
   rightWidth: number;
@@ -36,6 +51,7 @@ type LayoutState = {
   leftCollapsed: boolean;
   rightCollapsed: boolean;
   bottomCollapsed: boolean;
+  centerView: CenterView;
 
   setLeftWidth: (n: number) => void;
   setRightWidth: (n: number) => void;
@@ -43,6 +59,7 @@ type LayoutState = {
   setLeftCollapsed: (v: boolean) => void;
   setRightCollapsed: (v: boolean) => void;
   setBottomCollapsed: (v: boolean) => void;
+  setCenterView: (v: CenterView) => void;
   toggleLeft: () => void;
   toggleRight: () => void;
   toggleBottom: () => void;
@@ -63,6 +80,7 @@ export const useLayout = create<LayoutState>()(
       leftCollapsed: false,
       rightCollapsed: false,
       bottomCollapsed: false,
+      centerView: "canvas",
 
       setLeftWidth: (n) =>
         set({ leftWidth: clamp(n, LAYOUT_BOUNDS.left.min, LAYOUT_BOUNDS.left.max) }),
@@ -73,6 +91,7 @@ export const useLayout = create<LayoutState>()(
       setLeftCollapsed: (v) => set({ leftCollapsed: v }),
       setRightCollapsed: (v) => set({ rightCollapsed: v }),
       setBottomCollapsed: (v) => set({ bottomCollapsed: v }),
+      setCenterView: (v) => set({ centerView: v }),
       toggleLeft: () => set((s) => ({ leftCollapsed: !s.leftCollapsed })),
       toggleRight: () => set((s) => ({ rightCollapsed: !s.rightCollapsed })),
       toggleBottom: () => set((s) => ({ bottomCollapsed: !s.bottomCollapsed })),
@@ -84,8 +103,9 @@ export const useLayout = create<LayoutState>()(
           leftCollapsed: false,
           rightCollapsed: false,
           bottomCollapsed: false,
+          centerView: "canvas",
         }),
     }),
-    { name: "wonder-layout", version: 2 },
+    { name: "wonder-layout", version: 3 },
   ),
 );

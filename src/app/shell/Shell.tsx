@@ -11,11 +11,18 @@ import { ProjectTokensStyle } from "@/app/shell/ProjectTokensStyle";
 import { ResizableSidebar } from "@/app/shell/ResizableSidebar";
 import { ProfileModal } from "@/app/shell/ProfileModal";
 import { ProjectLauncher } from "@/app/shell/ProjectLauncher";
+import { TokensStudio } from "@/app/shell/TokensStudio";
 import { useProject } from "@/store/project";
 import { useCanvas } from "@/store/canvas";
 import { useChat } from "@/store/chat";
+import { useLayout } from "@/store/layout";
 import { normalizePastedComponent } from "@/ast/paste";
-import { loadAppState, loadProjectFromPath } from "@/persistence";
+import {
+  loadAppState,
+  loadProjectFromPath,
+  initAutosave,
+  flushAutosave,
+} from "@/persistence";
 
 function isEditableTarget(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
@@ -35,6 +42,12 @@ export function Shell() {
   // initial boot, by File → Close, and by failed project restore.
   const projectPath = useProject((s) => s.projectMeta.path);
   const hasProject = !!projectPath;
+  // What occupies the middle column of the shell. `"tokens"` replaces
+  // CanvasArea + CodePanel with the full-height TokensStudio. Flipped on
+  // by LeftSidebar's tailwind.config.ts entry, off by the studio's back
+  // button. Sidebars stay mounted either way so file navigation still
+  // works while editing tokens.
+  const centerView = useLayout((s) => s.centerView);
 
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
@@ -78,18 +91,30 @@ export function Shell() {
   }, []);
 
   // Browser-side guard: warn the user when trying to close the tab/window with
-  // unsaved changes. Tauri also emits a close-requested event, but wiring that
-  // requires a Rust command round-trip; the beforeunload hook is good enough
-  // for the dev server + handles the "accidental window close" muscle memory.
+  // unsaved changes. With autosave running, this should almost never fire —
+  // but if the user quits in the ~1.5s debounce window, we fire a best-effort
+  // synchronous-ish flush. Tauri's beforeunload fires on window close, so
+  // this covers the "accidental ⌘W" case without a Rust round-trip.
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (useProject.getState().projectMeta.dirty) {
-        e.preventDefault();
-        e.returnValue = "";
-      }
+      if (!useProject.getState().projectMeta.dirty) return;
+      // Kick off the save — we can't await here (beforeunload is sync), but
+      // modern browsers give the in-flight write ~a few hundred ms to finish
+      // before killing the page. Worth a try.
+      void flushAutosave();
+      e.preventDefault();
+      e.returnValue = "";
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
+
+  // Debounced autosave: every mutation flips `dirty=true`; 1.5s after the
+  // last one, we write the project to disk. Only active once a project has
+  // a `path` (scaffolded or Save As'd) — the launcher flow is unaffected.
+  useEffect(() => {
+    const stop = initAutosave();
+    return stop;
   }, []);
 
   // ProjectLauncher path: no project loaded → show the welcome screen.
@@ -116,8 +141,14 @@ export function Shell() {
           <LeftSidebar />
         </ResizableSidebar>
         <div className="flex min-w-0 flex-1 flex-col">
-          <CanvasArea />
-          <CodePanel />
+          {centerView === "tokens" ? (
+            <TokensStudio />
+          ) : (
+            <>
+              <CanvasArea />
+              <CodePanel />
+            </>
+          )}
         </div>
         <ResizableSidebar side="right">
           <RightPanel />
