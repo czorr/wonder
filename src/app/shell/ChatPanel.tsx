@@ -2,8 +2,8 @@ import { AppIcon } from "@/app/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@/store/chat";
 import { useProject } from "@/store/project";
+import { useLayout } from "@/store/layout";
 import { allModels } from "@/agent";
-import { ChatSettingsModal } from "@/app/shell/ChatSettingsModal";
 import type { Message, Session } from "@/chat/types";
 
 /**
@@ -19,10 +19,10 @@ import type { Message, Session } from "@/chat/types";
 export function ChatPanel() {
   const sessions = useChat((s) => s.sessions);
   const activeSessionId = useChat((s) => s.activeSessionId);
-  const settingsOpen = useChat((s) => s.settingsOpen);
-  const openSettings = useChat((s) => s.openSettings);
+  const openProfile = useChat((s) => s.openProfile);
   const newSession = useChat((s) => s.newSession);
   const setChatOpen = useChat((s) => s.setChatOpen);
+  const collapseLeft = useLayout((s) => s.toggleLeft);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId) ?? null,
@@ -38,11 +38,20 @@ export function ChatPanel() {
         <IconBtn title="New chat" onClick={() => newSession()}>
           <AppIcon name="Plus" size={13} />
         </IconBtn>
-        <IconBtn title="Chat settings" onClick={openSettings}>
+        {/* Settings live in the unified Profile modal (TitleStrip avatar).
+            We keep the cog here as an affordance from inside the chat, but
+            it opens the same modal so there is a single place for keys,
+            models, and account. */}
+        <IconBtn title="AI settings (opens profile)" onClick={openProfile}>
           <AppIcon name="Settings" size={13} />
         </IconBtn>
         <IconBtn title="Close chat (⌘L)" onClick={() => setChatOpen(false)}>
           <AppIcon name="X" size={13} />
+        </IconBtn>
+        {/* Collapse the whole sidebar — distinct from closing chat. Closing
+            chat returns to Files view; collapsing hides the panel entirely. */}
+        <IconBtn title="Collapse panel (⌘\)" onClick={collapseLeft}>
+          <AppIcon name="ChevronLeft" size={13} />
         </IconBtn>
       </div>
 
@@ -51,8 +60,6 @@ export function ChatPanel() {
 
       {/* Input */}
       <ChatInput session={activeSession} />
-
-      {settingsOpen ? <ChatSettingsModal /> : null}
     </div>
   );
 }

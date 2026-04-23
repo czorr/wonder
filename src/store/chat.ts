@@ -83,7 +83,7 @@ type ChatStore = {
   /** When true, the LeftSidebar swaps its normal content for ChatPanel and
    *  expands to 360px. Toggled from the Topbar button + ⌘L. */
   chatOpen: boolean;
-  settingsOpen: boolean;
+  profileOpen: boolean;
   /**
    * Incremented whenever something wants to focus the chat input (e.g. ⌘L).
    * ChatPanel watches this via a subscription and calls focus() in an effect.
@@ -95,8 +95,8 @@ type ChatStore = {
   setSidebarTab: (tab: SidebarTab) => void;
   setChatOpen: (open: boolean) => void;
   toggleChat: () => void;
-  openSettings: () => void;
-  closeSettings: () => void;
+  openProfile: () => void;
+  closeProfile: () => void;
   requestFocus: () => void;
 
   newSession: () => string;
@@ -149,7 +149,7 @@ export const useChat = create<ChatStore>((set, get) => ({
 
   sidebarTab: "files",
   chatOpen: false,
-  settingsOpen: false,
+  profileOpen: false,
   focusRequestId: 0,
 
   setSidebarTab(tab) {
@@ -161,11 +161,11 @@ export const useChat = create<ChatStore>((set, get) => ({
   toggleChat() {
     set((s) => ({ chatOpen: !s.chatOpen }));
   },
-  openSettings() {
-    set({ settingsOpen: true });
+  openProfile() {
+    set({ profileOpen: true });
   },
-  closeSettings() {
-    set({ settingsOpen: false });
+  closeProfile() {
+    set({ profileOpen: false });
   },
   requestFocus() {
     set((s) => ({ focusRequestId: s.focusRequestId + 1 }));
@@ -231,13 +231,13 @@ export const useChat = create<ChatStore>((set, get) => ({
     const provider =
       providerForModel(s0.selectedModel) ?? PROVIDERS[s0.selectedProvider];
     if (!provider || !provider.enabled) {
-      set({ settingsOpen: true });
+      set({ profileOpen: true });
       return;
     }
 
     const apiKey = await loadApiKey(provider.id);
     if (!apiKey) {
-      set({ settingsOpen: true });
+      set({ profileOpen: true });
       return;
     }
 

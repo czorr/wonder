@@ -2,10 +2,10 @@ import { AppIcon } from "@/app/icons";
 import Editor, { type OnMount, type BeforeMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useProject } from "@/store/project";
+import { LAYOUT_BOUNDS, useLayout } from "@/store/layout";
 
-const MIN_PANEL_HEIGHT = 120;
+const MIN_PANEL_HEIGHT = LAYOUT_BOUNDS.bottom.min;
 const MAX_PANEL_HEIGHT_MARGIN = 220; // leave at least this much of the window above the panel
-const DEFAULT_PANEL_HEIGHT = 260;
 
 export function CodePanel() {
   const openTabs = useProject((s) => s.openTabs);
@@ -15,13 +15,19 @@ export function CodePanel() {
   const setActiveTab = useProject((s) => s.setActiveTab);
   const closeTab = useProject((s) => s.closeTab);
 
+  // Height + collapsed state live in the layout store so they persist across
+  // restarts (same treatment as sidebar widths).
+  const height = useLayout((s) => s.bottomHeight);
+  const setHeight = useLayout((s) => s.setBottomHeight);
+  const collapsed = useLayout((s) => s.bottomCollapsed);
+  const toggleCollapsed = useLayout((s) => s.toggleBottom);
+
   const active = activeTab ? components[activeTab] : null;
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   // Track the last value we pushed in from outside (not typed by user)
   const externalValueRef = useRef<string>("");
 
   // --- Resizable panel height (drag the top edge to resize) ---------------
-  const [height, setHeight] = useState<number>(DEFAULT_PANEL_HEIGHT);
   const onResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const startY = e.clientY;
@@ -45,7 +51,7 @@ export function CodePanel() {
     document.body.style.userSelect = "none";
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-  }, [height]);
+  }, [height, setHeight]);
 
   // --- "synced" / "editing" status --------------------------------------
   const [dirty, setDirty] = useState(false);
@@ -238,23 +244,31 @@ declare module "motion" {
   return (
     <section
       className="relative flex shrink-0 flex-col border-t border-stroke bg-panel"
-      style={{ height }}
+      style={collapsed ? undefined : { height }}
     >
-      {/* Resize handle — drag the top edge to resize the code panel. */}
-      <div
-        onMouseDown={onResizeStart}
-        title="Drag to resize"
-        className="group absolute inset-x-0 -top-[3px] z-10 flex h-[6px] cursor-ns-resize items-center justify-center"
-      >
-        <div className="h-[2px] w-10 rounded-full bg-transparent group-hover:bg-accent/60 transition" />
-        <AppIcon
-          name="Drag"
-          size={14}
-          className="pointer-events-none absolute text-ink-faint opacity-0 group-hover:opacity-100 transition"
-        />
-      </div>
+      {/* Resize handle — drag the top edge to resize the code panel.
+          Hidden while collapsed (there's nothing to resize). */}
+      {!collapsed ? (
+        <div
+          onMouseDown={onResizeStart}
+          title="Drag to resize"
+          className="group absolute inset-x-0 -top-[3px] z-10 flex h-[6px] cursor-ns-resize items-center justify-center"
+        >
+          <div className="h-[2px] w-10 rounded-full bg-transparent group-hover:bg-accent/60 transition" />
+          <AppIcon
+            name="Drag"
+            size={14}
+            className="pointer-events-none absolute text-ink-faint opacity-0 group-hover:opacity-100 transition"
+          />
+        </div>
+      ) : null}
 
-      <div className="flex items-center justify-between border-b border-stroke pr-2">
+      <div
+        className={
+          "flex items-center justify-between pr-2 " +
+          (collapsed ? "" : "border-b border-stroke")
+        }
+      >
         <div className="flex items-center overflow-x-auto">
           {openTabs.map((id) => {
             const c = components[id];
@@ -316,9 +330,19 @@ declare module "motion" {
           ) : null}
           <span className="text-ink-faint">UTF-8</span>
           {ext ? <span className="text-ink-faint">{ext}</span> : null}
+          {/* Collapse toggle — chevron-down = "hide panel", chevron-up =
+              "show panel". Matches the sidebar collapse pattern: a single
+              muted affordance that doesn't compete with the tab strip. */}
+          <button
+            onClick={toggleCollapsed}
+            title={collapsed ? "Expand code panel" : "Collapse code panel"}
+            className="grid size-6 place-items-center rounded-md text-ink-faint hover:bg-panel-soft hover:text-ink-muted transition"
+          >
+            <AppIcon name={collapsed ? "ChevronUp" : "ChevronDown"} size={13} />
+          </button>
         </div>
       </div>
-      <div className="min-h-0 flex-1">
+      <div className={"min-h-0 flex-1 " + (collapsed ? "hidden" : "")}>
         {active ? (
           <Editor
             height="100%"

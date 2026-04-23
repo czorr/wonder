@@ -18,6 +18,7 @@ export function serializeMeta(args: {
   components: Record<string, WonderComponent>;
   order: string[];
   propValues: Record<string, Record<string, string>>;
+  declaredFolders: string[];
   canvas: { zoom: number; pan: { x: number; y: number } };
   selection: {
     componentId: string | null;
@@ -51,6 +52,7 @@ export function serializeMeta(args: {
     selection: args.selection,
     components: componentsArr,
     propValues: args.propValues,
+    declaredFolders: args.declaredFolders,
   };
 }
 

@@ -152,6 +152,8 @@ export const ICON_MAP = {
   Loader: "mingcute:loading-3-line",
   Drag: "mingcute:dots-line",
   CircleSlash: "mingcute:forbid-circle-line",
+  User: "mingcute:user-3-line",
+  LogOut: "mingcute:exit-line",
 } as const;
 
 export type AppIconName = keyof typeof ICON_MAP;

@@ -93,6 +93,9 @@ function assertCurrentShape(obj: Partial<ProjectFile>): ProjectFile {
     },
     components: req(obj.components, "components"),
     propValues: obj.propValues ?? {},
+    declaredFolders: Array.isArray(obj.declaredFolders)
+      ? obj.declaredFolders.filter((f): f is string => typeof f === "string")
+      : [],
   };
 }
 

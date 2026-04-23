@@ -3,6 +3,10 @@ import { useEffect } from "react";
 import { useCanvas } from "@/store/canvas";
 import { useProject } from "@/store/project";
 import { useChat } from "@/store/chat";
+// `useLayout` is imported lazily inside the keydown handler via getState() so
+// the Topbar doesn't re-render when layout changes — it doesn't show any
+// layout state directly (that UI moved into the sidebar headers themselves).
+import { useLayout } from "@/store/layout";
 import { removeClassesAtPath } from "@/ast/tailwind";
 import {
   actionNewProject,
@@ -109,6 +113,19 @@ export function Topbar() {
         const chat = useChat.getState();
         if (!chat.chatOpen) chat.setChatOpen(true);
         chat.requestFocus();
+        return;
+      }
+      // Layout toggles — Figma / Linear convention on ⌘\\.
+      //   ⌘\\        → toggle LEFT sidebar
+      //   ⌘⇧\\       → toggle RIGHT panel
+      //   ⌘⌥\\       → reset sidebars to defaults
+      if (key === "\\") {
+        e.preventDefault();
+        e.stopPropagation();
+        const layout = useLayout.getState();
+        if (e.altKey) layout.resetLayout();
+        else if (e.shiftKey) layout.toggleRight();
+        else layout.toggleLeft();
         return;
       }
     };

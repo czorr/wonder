@@ -26,6 +26,7 @@ type DocSnapshot = {
   order: ComponentId[];
   propValues: Record<ComponentId, Record<string, string>>;
   tokens: Tokens;
+  declaredFolders: string[];
 };
 
 // Kinds of mutations we push into history. Used for coalescing — a burst of
@@ -40,7 +41,8 @@ type HistoryKind =
   | "clearPropValue"
   | "setTokens"
   | "applyExtraction"
-  | "setFolder";
+  | "setFolder"
+  | "folders";
 
 type HistoryEntry = { snapshot: DocSnapshot; kind: HistoryKind; at: number };
 
@@ -84,6 +86,18 @@ type State = {
    */
   tokens: Tokens;
 
+  /**
+   * Folders declared by the user that don't necessarily contain any
+   * components yet. The sidebar file tree unions this with folders
+   * derived from `components`, so an empty folder stays visible until
+   * the user fills it or deletes it.
+   *
+   * Invariants: all entries are normalized (no leading/trailing slashes),
+   * de-duplicated, and stored in insertion order. `primitives` never needs
+   * to be declared here because it's auto-derived from promoted components.
+   */
+  declaredFolders: string[];
+
   // History
   past: HistoryEntry[];
   future: HistoryEntry[];
@@ -109,6 +123,23 @@ type State = {
    * in the primitives index the agent sees. No-ops when the folder is unchanged.
    */
   setComponentFolder: (id: ComponentId, folder: string) => void;
+
+  /**
+   * Create an empty folder. No-ops if a folder with the same name already
+   * exists (either declared or derived from a component). Returns the
+   * normalized name that was created (or the existing match).
+   */
+  createFolder: (name: string) => string;
+  /**
+   * Rename a folder. Updates every component whose `folder` matches, plus
+   * the entry in `declaredFolders`. Silently no-ops on duplicate targets.
+   */
+  renameFolder: (oldName: string, newName: string) => void;
+  /**
+   * Delete a folder. Components inside it are moved to `moveTo` (defaults
+   * to "components", the catch-all bucket) so nothing is lost.
+   */
+  deleteFolder: (name: string, moveTo?: string) => void;
 
   /**
    * Replace the design system tokens. Accepts either a full Tokens value or
@@ -160,6 +191,9 @@ export type ReplaceProjectPayload = {
   /** Design system from disk. Fall-back to defaults if omitted (e.g. brand-new
    *  project or a read that failed to parse tokens.json). */
   tokens?: Tokens;
+  /** User-declared folders from disk (may include empty ones). Optional so
+   *  older project files without this field still load cleanly. */
+  declaredFolders?: string[];
   selection?: {
     componentId: ComponentId | null;
     elementPath: string | null;
@@ -194,7 +228,14 @@ function snapshotOf(s: State): DocSnapshot {
     order: s.order,
     propValues: s.propValues,
     tokens: s.tokens,
+    declaredFolders: s.declaredFolders,
   };
+}
+
+/** Normalize a folder name: trim, strip leading/trailing slashes, collapse
+ *  consecutive slashes. Empty string is preserved (it means "top level"). */
+function normalizeFolderName(s: string): string {
+  return s.trim().replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
 }
 
 const STAT_TILE = `import { TrendingUp, DollarSign } from "lucide-react";
@@ -335,6 +376,7 @@ export function emptyProjectState(name = "Untitled"): {
   order: ComponentId[];
   propValues: Record<ComponentId, Record<string, string>>;
   tokens: Tokens;
+  declaredFolders: string[];
   meta: ProjectMeta;
   selection: {
     selectedComponentId: ComponentId | null;
@@ -348,6 +390,7 @@ export function emptyProjectState(name = "Untitled"): {
     order: [],
     propValues: {},
     tokens: defaultTokens(),
+    declaredFolders: [],
     meta: {
       path: null,
       name,
@@ -402,6 +445,7 @@ export const useProject = create<State>((set, get) => {
     // Seed the untitled draft with default tokens so new projects have a
     // coherent design system from the first keystroke.
     tokens: defaultTokens(),
+    declaredFolders: [],
     past: [],
     future: [],
     projectMeta: {
@@ -554,7 +598,7 @@ export const useProject = create<State>((set, get) => {
     setComponentFolder(id, folder) {
       const c = get().components[id];
       if (!c) return;
-      const normalized = folder.replace(/^\/+|\/+$/g, "");
+      const normalized = normalizeFolderName(folder);
       if (c.folder === normalized) return;
       pushHistory("setFolder");
       set((s) => ({
@@ -562,6 +606,84 @@ export const useProject = create<State>((set, get) => {
           ...s.components,
           [id]: { ...s.components[id], folder: normalized },
         },
+        // Drop the target from declaredFolders once a real component lives
+        // there — the union in the UI will still surface it, and we avoid
+        // dead declared entries piling up in the manifest.
+        declaredFolders: s.declaredFolders.filter((f) => f !== normalized),
+      }));
+    },
+
+    createFolder(name) {
+      const normalized = normalizeFolderName(name);
+      if (!normalized) return "";
+      const s = get();
+      // Already present — as a declared entry OR backing a real component.
+      const derived = new Set(
+        Object.values(s.components).map((c) => c.folder),
+      );
+      if (s.declaredFolders.includes(normalized) || derived.has(normalized)) {
+        return normalized;
+      }
+      pushHistory("folders");
+      set({ declaredFolders: [...s.declaredFolders, normalized] });
+      return normalized;
+    },
+
+    renameFolder(oldName, newName) {
+      const from = normalizeFolderName(oldName);
+      const to = normalizeFolderName(newName);
+      if (!from || !to || from === to) return;
+      const s = get();
+      const targetExists =
+        s.declaredFolders.includes(to) ||
+        Object.values(s.components).some((c) => c.folder === to);
+      if (targetExists) return; // avoid silent merges — UI should prevent this
+      const touched = Object.values(s.components).some(
+        (c) => c.folder === from,
+      );
+      const wasDeclared = s.declaredFolders.includes(from);
+      if (!touched && !wasDeclared) return;
+      pushHistory("folders");
+      set((st) => ({
+        components: Object.fromEntries(
+          Object.entries(st.components).map(([id, c]) => [
+            id,
+            c.folder === from ? { ...c, folder: to } : c,
+          ]),
+        ),
+        declaredFolders: st.declaredFolders.map((f) => (f === from ? to : f)),
+      }));
+    },
+
+    deleteFolder(name, moveTo = "components") {
+      const from = normalizeFolderName(name);
+      const dest = normalizeFolderName(moveTo);
+      if (!from || from === dest) {
+        // Still allow removing a purely-declared folder that has no contents.
+        const s = get();
+        if (s.declaredFolders.includes(from)) {
+          pushHistory("folders");
+          set({
+            declaredFolders: s.declaredFolders.filter((f) => f !== from),
+          });
+        }
+        return;
+      }
+      const s = get();
+      const touched = Object.values(s.components).some(
+        (c) => c.folder === from,
+      );
+      const wasDeclared = s.declaredFolders.includes(from);
+      if (!touched && !wasDeclared) return;
+      pushHistory("folders");
+      set((st) => ({
+        components: Object.fromEntries(
+          Object.entries(st.components).map(([id, c]) => [
+            id,
+            c.folder === from ? { ...c, folder: dest } : c,
+          ]),
+        ),
+        declaredFolders: st.declaredFolders.filter((f) => f !== from),
       }));
     },
 
@@ -602,7 +724,8 @@ export const useProject = create<State>((set, get) => {
         kind: top.kind,
         at: Date.now(),
       };
-      const { components, order, propValues, tokens } = top.snapshot;
+      const { components, order, propValues, tokens, declaredFolders } =
+        top.snapshot;
       // If the currently selected component is being removed by the undo, drop selection.
       const selectedComponentId =
         s.selectedComponentId && components[s.selectedComponentId]
@@ -618,6 +741,7 @@ export const useProject = create<State>((set, get) => {
         order,
         propValues,
         tokens,
+        declaredFolders,
         selectedComponentId,
         selectedElementPath: selectedComponentId ? s.selectedElementPath : null,
         openTabs,
@@ -636,7 +760,8 @@ export const useProject = create<State>((set, get) => {
         kind: top.kind,
         at: Date.now(),
       };
-      const { components, order, propValues, tokens } = top.snapshot;
+      const { components, order, propValues, tokens, declaredFolders } =
+        top.snapshot;
       const selectedComponentId =
         s.selectedComponentId && components[s.selectedComponentId]
           ? s.selectedComponentId
@@ -651,6 +776,7 @@ export const useProject = create<State>((set, get) => {
         order,
         propValues,
         tokens,
+        declaredFolders,
         selectedComponentId,
         selectedElementPath: selectedComponentId ? s.selectedElementPath : null,
         openTabs,
@@ -682,6 +808,7 @@ export const useProject = create<State>((set, get) => {
         order: empty.order,
         propValues: empty.propValues,
         tokens: empty.tokens,
+        declaredFolders: empty.declaredFolders,
         selectedComponentId: empty.selection.selectedComponentId,
         selectedElementPath: empty.selection.selectedElementPath,
         openTabs: empty.selection.openTabs,
@@ -718,6 +845,7 @@ export const useProject = create<State>((set, get) => {
         // Fall back to defaults when tokens weren't supplied — happens when
         // opening a v1 project whose design/tokens.json doesn't exist yet.
         tokens: payload.tokens ?? defaultTokens(),
+        declaredFolders: payload.declaredFolders ?? [],
         selectedComponentId: sel.selectedComponentId,
         selectedElementPath: sel.selectedElementPath,
         openTabs: sel.openTabs,

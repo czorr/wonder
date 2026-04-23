@@ -8,8 +8,11 @@ import { CodePanel } from "@/app/shell/CodePanel";
 import { StatusBar } from "@/app/shell/StatusBar";
 import { PreviewOverlay } from "@/app/shell/PreviewOverlay";
 import { ProjectTokensStyle } from "@/app/shell/ProjectTokensStyle";
+import { ResizableSidebar } from "@/app/shell/ResizableSidebar";
+import { ProfileModal } from "@/app/shell/ProfileModal";
 import { useProject } from "@/store/project";
 import { useCanvas } from "@/store/canvas";
+import { useChat } from "@/store/chat";
 import { normalizePastedComponent } from "@/ast/paste";
 import { loadAppState, loadProjectFromPath } from "@/persistence";
 
@@ -22,6 +25,11 @@ function isEditableTarget(t: EventTarget | null): boolean {
 }
 
 export function Shell() {
+  // Single mount point for the profile/settings modal. Opened from the
+  // TitleStrip avatar and the chat header cog — both funnel through
+  // `useChat.openProfile()` so there's one source of truth.
+  const profileOpen = useChat((s) => s.profileOpen);
+
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       if (isEditableTarget(e.target)) return;
@@ -84,15 +92,20 @@ export function Shell() {
       <TitleStrip />
       <Topbar />
       <div className="flex min-h-0 flex-1">
-        <LeftSidebar />
+        <ResizableSidebar side="left">
+          <LeftSidebar />
+        </ResizableSidebar>
         <div className="flex min-w-0 flex-1 flex-col">
           <CanvasArea />
           <CodePanel />
         </div>
-        <RightPanel />
+        <ResizableSidebar side="right">
+          <RightPanel />
+        </ResizableSidebar>
       </div>
       <StatusBar />
       <PreviewOverlay />
+      {profileOpen ? <ProfileModal /> : null}
     </div>
   );
 }

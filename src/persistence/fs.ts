@@ -210,6 +210,7 @@ type WriteProjectArgs = {
   components: Record<string, WonderComponent>;
   order: string[];
   propValues: Record<string, Record<string, string>>;
+  declaredFolders: string[];
   canvas: { zoom: number; pan: { x: number; y: number } };
   selection: {
     componentId: string | null;
@@ -282,9 +283,19 @@ export async function writeProjectFolder(args: WriteProjectArgs): Promise<Projec
     components: args.components,
     order: args.order,
     propValues: args.propValues,
+    declaredFolders: args.declaredFolders,
     canvas: args.canvas,
     selection: args.selection,
   });
+
+  // Make sure every declared folder exists on disk, even the empty ones.
+  // Otherwise the next read would lose them (the folder list would come back
+  // purely derived from component locations).
+  await Promise.all(
+    args.declaredFolders.map((f) =>
+      ensureDir(join(args.path, COMPONENTS_DIR, f)),
+    ),
+  );
   await writeAtomic(
     join(args.path, PROJECT_META_FILE),
     JSON.stringify(meta, null, 2) + "\n",

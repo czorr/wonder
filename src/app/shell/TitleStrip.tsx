@@ -1,6 +1,7 @@
 import { AppIcon } from "@/app/icons";
 import { useEffect, useState } from "react";
 import { useProject } from "@/store/project";
+import { useChat } from "@/store/chat";
 import {
   actionNewProject,
   actionOpenProject,
@@ -24,6 +25,7 @@ export function TitleStrip() {
   const activeFilename = activeTab ? components[activeTab]?.filename ?? null : null;
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const openProfile = useChat((s) => s.openProfile);
 
   return (
     <div
@@ -72,12 +74,34 @@ export function TitleStrip() {
         ) : null}
       </div>
 
-      <div className="flex shrink-0 items-center gap-0.5 pr-3">
-        <button className="grid size-7 place-items-center rounded-md text-ink-muted hover:bg-panel-soft">
+      <div className="flex shrink-0 items-center gap-0.5 pr-2">
+        <button
+          title="Share"
+          className="grid size-7 place-items-center rounded-md text-ink-muted hover:bg-panel-soft hover:text-ink transition"
+        >
           <AppIcon name="Share" size={14} />
         </button>
-        <button className="grid size-7 place-items-center rounded-md text-ink-muted hover:bg-panel-soft">
+        <button
+          title="Comments"
+          className="grid size-7 place-items-center rounded-md text-ink-muted hover:bg-panel-soft hover:text-ink transition"
+        >
           <AppIcon name="Message" size={14} />
+        </button>
+        <div className="mx-1 h-4 w-px bg-stroke" />
+        {/* Profile avatar — opens the unified Profile & Settings modal.
+            Gets slight visual weight (circle + accent tint) to read as the
+            user's personal surface, separate from the chrome icons beside
+            it. Shortcut target lives inside the modal itself (Esc closes). */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            openProfile();
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          title="Profile & settings"
+          className="grid size-7 place-items-center rounded-full bg-accent-tint text-[10.5px] font-semibold text-accent transition hover:brightness-105"
+        >
+          W
         </button>
       </div>
 

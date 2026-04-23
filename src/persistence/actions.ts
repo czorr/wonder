@@ -107,6 +107,7 @@ export async function loadProjectFromPath(path: string): Promise<boolean> {
       propValues: loaded.meta.propValues,
       selection: loaded.meta.selection,
       tokens: loaded.tokens,
+      declaredFolders: loaded.meta.declaredFolders ?? [],
     });
     // Restore canvas view from the file (persisted with the project).
     useCanvas.getState().setZoom(loaded.meta.canvas.zoom);
@@ -228,6 +229,7 @@ async function writeToPath(path: string, name: string): Promise<boolean> {
       components: store.components,
       order: store.order,
       propValues: store.propValues,
+      declaredFolders: store.declaredFolders,
       canvas: { zoom: canvas.zoom, pan: canvas.pan },
       selection: {
         componentId: store.selectedComponentId,

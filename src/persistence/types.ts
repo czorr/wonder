@@ -41,6 +41,10 @@ export type ProjectFile = {
   };
   components: ProjectFileComponent[];
   propValues: Record<string, Record<string, string>>;
+  /** User-declared folders (may include empty ones). Optional for
+   *  backwards compatibility — v2 files written by older builds won't have
+   *  it, and the reader falls back to deriving folders from components. */
+  declaredFolders?: string[];
 };
 
 export type ProjectFileComponent = {

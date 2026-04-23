@@ -1,4 +1,5 @@
 import { AppIcon, type AppIconName } from "@/app/icons";
+import { useLayout } from "@/store/layout";
 import {
   useEffect,
   useMemo,
@@ -173,6 +174,7 @@ export function RightPanel() {
 
   const [state, setState] = useState<string>("base");
   const [panel, setPanel] = useState<"design" | "props" | "layers">("design");
+  const collapseRight = useLayout((s) => s.toggleRight);
   const propValuesByComp = useProject((s) => s.propValues);
   const setPropValue = useProject((s) => s.setPropValue);
 
@@ -272,8 +274,18 @@ export function RightPanel() {
   const borderColor = colorName(currentBorderColor, "border");
 
   return (
-    <aside className="flex w-[320px] shrink-0 flex-col overflow-x-hidden border-l border-stroke bg-panel text-[12px]">
+    <aside className="flex h-full w-full min-w-0 flex-1 flex-col overflow-x-hidden border-l border-stroke bg-panel text-[12px]">
       <div className="flex h-9 items-center gap-4 border-b border-stroke px-3 text-[11px] font-medium">
+        {/* Collapse chevron — mirror of the one in LeftSidebar. Sits before
+            the tabs so the two sidebars feel symmetric (chevron always on
+            the "outside" edge of its panel). */}
+        <button
+          onClick={collapseRight}
+          title="Collapse panel (⌘⇧\)"
+          className="grid size-6 place-items-center rounded-md text-ink-faint hover:bg-panel-soft hover:text-ink-muted transition"
+        >
+          <AppIcon name="ChevronRight" size={13} />
+        </button>
         <PanelTab icon="PaintBrush" label="Design" active={panel === "design"} onClick={() => setPanel("design")} />
         <PanelTab icon="Code" label="Props" active={panel === "props"} onClick={() => setPanel("props")} />
         <PanelTab icon="Layers" label="Layers" active={panel === "layers"} onClick={() => setPanel("layers")} />
