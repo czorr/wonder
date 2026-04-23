@@ -368,9 +368,6 @@ function ChatInput({ session }: { session: Session | null }) {
           )}
         </div>
       </div>
-      <div className="mt-1.5 text-center text-[10px] text-ink-faint">
-        AI can make mistakes. Press ⌘Z to undo any edit.
-      </div>
     </div>
   );
 }
