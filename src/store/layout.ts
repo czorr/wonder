@@ -44,6 +44,23 @@ export const LAYOUT_BOUNDS = {
  */
 export type CenterView = "canvas" | "tokens";
 
+/**
+ * Snapshot of the three collapse flags taken at the moment the user entered
+ * the tokens studio. Used to restore the chrome to its prior layout when
+ * they leave — tokens mode auto-collapses every side panel so the studio
+ * gets full-width breathing room, and we owe the user a faithful return trip.
+ *
+ * Persisted (via `partialize`) because `centerView` is persisted too — if a
+ * user reloads while inside the studio, we still need the pre-studio
+ * layout to restore on exit. `null` means "not currently inside a
+ * tokens session".
+ */
+type PreTokensLayout = {
+  leftCollapsed: boolean;
+  rightCollapsed: boolean;
+  bottomCollapsed: boolean;
+};
+
 type LayoutState = {
   leftWidth: number;
   rightWidth: number;
@@ -52,6 +69,15 @@ type LayoutState = {
   rightCollapsed: boolean;
   bottomCollapsed: boolean;
   centerView: CenterView;
+  /**
+   * See {@link PreTokensLayout}. Non-null iff `centerView === "tokens"`
+   * and the user got there via the transition helper (which every UI path
+   * uses — direct mutation via `setLeftCollapsed` etc. while in tokens mode
+   * is supported, and simply updates the snapshot so the restore is
+   * consistent… TODO if we ever need that). Today the snapshot is
+   * write-once-per-session: capture on entry, restore + clear on exit.
+   */
+  preTokensLayout: PreTokensLayout | null;
   /** Single source of truth for the "Extract design system" modal. Opened
    *  from the DesignSystemPanel button, the TokensStudio header button, and
    *  the native Assistant menu. Kept here (not local state) so the menu
@@ -88,6 +114,7 @@ export const useLayout = create<LayoutState>()(
       rightCollapsed: false,
       bottomCollapsed: false,
       centerView: "canvas",
+      preTokensLayout: null,
       // Transient — intentionally excluded from `partialize` below so we
       // never boot into a floating modal.
       extractDesignSystemOpen: false,
@@ -101,7 +128,42 @@ export const useLayout = create<LayoutState>()(
       setLeftCollapsed: (v) => set({ leftCollapsed: v }),
       setRightCollapsed: (v) => set({ rightCollapsed: v }),
       setBottomCollapsed: (v) => set({ bottomCollapsed: v }),
-      setCenterView: (v) => set({ centerView: v }),
+      setCenterView: (v) =>
+        set((s) => {
+          if (v === s.centerView) return s;
+          // Entering tokens: snapshot current chrome layout (unless we're
+          // already inside a session — don't clobber an earlier snapshot
+          // with the now-collapsed state), then collapse everything so the
+          // studio gets full width.
+          if (v === "tokens") {
+            const snapshot =
+              s.preTokensLayout ?? {
+                leftCollapsed: s.leftCollapsed,
+                rightCollapsed: s.rightCollapsed,
+                bottomCollapsed: s.bottomCollapsed,
+              };
+            return {
+              centerView: v,
+              preTokensLayout: snapshot,
+              leftCollapsed: true,
+              rightCollapsed: true,
+              bottomCollapsed: true,
+            };
+          }
+          // Leaving tokens: restore whatever we snapshotted on entry. If
+          // there's no snapshot (edge case: user migrated from an older
+          // build, or someone flipped the state directly), leave the
+          // current flags alone — better than resetting to defaults.
+          const restore = s.preTokensLayout;
+          if (!restore) return { centerView: v };
+          return {
+            centerView: v,
+            preTokensLayout: null,
+            leftCollapsed: restore.leftCollapsed,
+            rightCollapsed: restore.rightCollapsed,
+            bottomCollapsed: restore.bottomCollapsed,
+          };
+        }),
       toggleLeft: () => set((s) => ({ leftCollapsed: !s.leftCollapsed })),
       toggleRight: () => set((s) => ({ rightCollapsed: !s.rightCollapsed })),
       toggleBottom: () => set((s) => ({ bottomCollapsed: !s.bottomCollapsed })),
@@ -116,13 +178,16 @@ export const useLayout = create<LayoutState>()(
           rightCollapsed: false,
           bottomCollapsed: false,
           centerView: "canvas",
+          preTokensLayout: null,
         }),
     }),
     {
       name: "wonder-layout",
-      version: 3,
+      version: 4,
       // Keep transient UI flags (modal open, etc.) out of persistence so a
-      // hard reload never resurrects a stale overlay.
+      // hard reload never resurrects a stale overlay. `preTokensLayout` IS
+      // persisted — see its docstring for why (users who reload mid-session
+      // still need to exit the studio back into their pre-studio layout).
       partialize: (s) => ({
         leftWidth: s.leftWidth,
         rightWidth: s.rightWidth,
@@ -131,6 +196,7 @@ export const useLayout = create<LayoutState>()(
         rightCollapsed: s.rightCollapsed,
         bottomCollapsed: s.bottomCollapsed,
         centerView: s.centerView,
+        preTokensLayout: s.preTokensLayout,
       }),
     },
   ),

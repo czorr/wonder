@@ -42,6 +42,21 @@ import {
   type Tokens,
 } from "@/project/tokens";
 
+/**
+ * Which palette the Colors section is currently displaying / writing into.
+ *
+ * "light" edits land in `tokens.colors[family][variant]` — the base palette.
+ * "dark"  edits land in `tokens.darkColors[family][variant]` as sparse
+ *         overrides; unset shades inherit the light value at runtime via the
+ *         `.dark { --color-* }` cascade (see `tokensToSandboxCss`).
+ *
+ * Structural ops (rename/add/delete families or shades) always target the
+ * light structure because the shape is shared — there's no notion of a
+ * "dark-only shade". Those controls are disabled when `mode === "dark"` to
+ * keep the mental model honest.
+ */
+type ColorsMode = "light" | "dark";
+
 // Roles the emitter relies on — we allow editing but not deletion.
 const REQUIRED_FAMILIES = new Set(["primary", "neutral", "surface"]);
 
@@ -194,6 +209,8 @@ function ColorsSection({
   update: (fn: (prev: Tokens) => Tokens) => void;
 }) {
   const families = Object.keys(tokens.colors);
+  const [mode, setMode] = useState<ColorsMode>("light");
+  const isDark = mode === "dark";
 
   const addFamily = () => {
     // Pick an unused generic name so the row appears immediately; user renames.
@@ -207,17 +224,100 @@ function ColorsSection({
     }));
   };
 
+  // Rename a family across BOTH palettes — if the user renamed "primary" →
+  // "brand" and we forgot to move the dark override, the dark block would
+  // silently stop overriding anything (wrong key) and the user would have
+  // no idea why the canvas stopped flipping. Keep the two palettes in sync.
+  const renameFamily = (from: string, to: string) => {
+    if (!to || to === from) return;
+    if (tokens.colors[to]) return;
+    update((prev) => {
+      const { [from]: moving, ...rest } = prev.colors;
+      const nextColors = {
+        ...rest,
+        [to]: moving,
+      } as Tokens["colors"];
+      let nextDark = prev.darkColors;
+      if (nextDark && from in nextDark) {
+        const { [from]: movingDark, ...restDark } = nextDark;
+        nextDark = { ...restDark, [to]: movingDark };
+      }
+      return { ...prev, colors: nextColors, darkColors: nextDark };
+    });
+  };
+
+  const deleteFamily = (family: string) => {
+    update((prev) => {
+      const { [family]: _, ...restColors } = prev.colors;
+      let nextDark = prev.darkColors;
+      if (nextDark && family in nextDark) {
+        const { [family]: __, ...restDark } = nextDark;
+        nextDark = restDark;
+      }
+      return {
+        ...prev,
+        colors: restColors as Tokens["colors"],
+        darkColors: nextDark,
+      };
+    });
+  };
+
+  // Write a single dark override. Lazily materializes `darkColors` and the
+  // family sub-object so callers don't have to care whether either existed.
+  const setDarkShade = (family: string, variant: string, value: string) => {
+    update((prev) => {
+      const prevDark = prev.darkColors ?? {};
+      const prevFamilyDark = prevDark[family] ?? {};
+      return {
+        ...prev,
+        darkColors: {
+          ...prevDark,
+          [family]: { ...prevFamilyDark, [variant]: value },
+        },
+      };
+    });
+  };
+
+  // Drop a single dark override (back to "inherit light"). Cleans up empty
+  // families and the top-level `darkColors` key so the JSON stays tidy and
+  // re-saves don't leave dangling `{}` shells.
+  const clearDarkShade = (family: string, variant: string) => {
+    update((prev) => {
+      if (!prev.darkColors || !prev.darkColors[family]) return prev;
+      const { [variant]: _, ...restShades } = prev.darkColors[family];
+      const { [family]: __, ...restFamilies } = prev.darkColors;
+      let nextDark: Tokens["darkColors"];
+      if (Object.keys(restShades).length > 0) {
+        nextDark = { ...restFamilies, [family]: restShades };
+      } else {
+        nextDark = Object.keys(restFamilies).length > 0
+          ? restFamilies
+          : undefined;
+      }
+      return { ...prev, darkColors: nextDark };
+    });
+  };
+
   return (
     <Section
       title="Colors"
-      description="Color families become Tailwind utilities: bg-primary, text-primary-ink, border-neutral-soft…"
+      description={
+        isDark
+          ? "Dark palette overrides. Unset shades inherit the light value at runtime via the .dark cascade."
+          : "Color families become Tailwind utilities: bg-primary, text-primary-ink, border-neutral-soft…"
+      }
       headerRight={
-        <button
-          onClick={addFamily}
-          className="flex items-center gap-1 rounded-md border border-stroke bg-panel px-2 py-1 text-[11px] text-ink-muted hover:text-ink hover:border-stroke-strong"
-        >
-          <AppIcon name="Plus" size={11} /> Add family
-        </button>
+        <div className="flex items-center gap-2">
+          <PaletteModeToggle mode={mode} onChange={setMode} />
+          <button
+            onClick={addFamily}
+            disabled={isDark}
+            title={isDark ? "Switch to Light to change structure" : undefined}
+            className="flex items-center gap-1 rounded-md border border-stroke bg-panel px-2 py-1 text-[11px] text-ink-muted transition hover:text-ink hover:border-stroke-strong disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-ink-muted disabled:hover:border-stroke"
+          >
+            <AppIcon name="Plus" size={11} /> Add family
+          </button>
+        </div>
       }
     >
       {families.map((family) => (
@@ -225,31 +325,21 @@ function ColorsSection({
           key={family}
           name={family}
           family={tokens.colors[family]}
+          darkFamily={tokens.darkColors?.[family]}
+          mode={mode}
           onChange={(next) =>
             update((prev) => ({
               ...prev,
               colors: { ...prev.colors, [family]: next },
             }))
           }
-          onRename={(newName) => {
-            if (!newName || newName === family) return;
-            if (tokens.colors[newName]) return; // collision — silently ignore
-            update((prev) => {
-              const { [family]: moving, ...rest } = prev.colors;
-              return {
-                ...prev,
-                colors: { ...rest, [newName]: moving } as Tokens["colors"],
-              };
-            });
-          }}
+          onDarkShadeChange={(variant, value) =>
+            setDarkShade(family, variant, value)
+          }
+          onClearDarkShade={(variant) => clearDarkShade(family, variant)}
+          onRename={(newName) => renameFamily(family, newName)}
           onDelete={
-            REQUIRED_FAMILIES.has(family)
-              ? undefined
-              : () =>
-                  update((prev) => {
-                    const { [family]: _, ...rest } = prev.colors;
-                    return { ...prev, colors: rest as Tokens["colors"] };
-                  })
+            REQUIRED_FAMILIES.has(family) ? undefined : () => deleteFamily(family)
           }
         />
       ))}
@@ -257,19 +347,70 @@ function ColorsSection({
   );
 }
 
+/**
+ * Two-pill toggle that flips the Colors editor between light and dark
+ * palettes. Deliberately matches the `LibraryPanel` filter chips visually —
+ * users already know "pill group = view switcher" from elsewhere in the app.
+ */
+function PaletteModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: ColorsMode;
+  onChange: (next: ColorsMode) => void;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 rounded-md border border-stroke bg-panel p-0.5">
+      {(
+        [
+          ["light", "Light", "Sun"],
+          ["dark", "Dark", "Moon"],
+        ] as const
+      ).map(([key, label, icon]) => {
+        const active = mode === key;
+        return (
+          <button
+            key={key}
+            onClick={() => onChange(key)}
+            className={
+              "flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition " +
+              (active
+                ? "bg-ink text-panel"
+                : "text-ink-muted hover:bg-panel-soft hover:text-ink")
+            }
+          >
+            <AppIcon name={icon} size={11} />
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ColorFamilyCard({
   name,
   family,
+  darkFamily,
+  mode,
   onChange,
+  onDarkShadeChange,
+  onClearDarkShade,
   onRename,
   onDelete,
 }: {
   name: string;
   family: ColorFamily;
+  /** Sparse dark overrides for this family. May be undefined (no overrides). */
+  darkFamily: { [variant: string]: string } | undefined;
+  mode: ColorsMode;
   onChange: (next: ColorFamily) => void;
+  onDarkShadeChange: (variant: string, value: string) => void;
+  onClearDarkShade: (variant: string) => void;
   onRename: (next: string) => void;
   onDelete?: () => void;
 }) {
+  const isDark = mode === "dark";
   // Inline rename state — mirror pattern from DesignSystemPanel.
   const [localName, setLocalName] = useState(name);
   const lastName = useRef(name);
@@ -313,17 +454,35 @@ function ColorFamilyCard({
     return a.localeCompare(b);
   });
 
+  // Swatch color on the family row header: in dark mode, prefer the dark
+  // DEFAULT override if the user set one — so the header color reflects
+  // what the canvas is actually painting. Falls back to light DEFAULT
+  // otherwise.
+  const headerSwatch =
+    isDark && darkFamily?.DEFAULT ? darkFamily.DEFAULT : family.DEFAULT;
+
+  // Structural controls (rename, add shade, remove family) edit the light
+  // STRUCTURE, which is shared across both palettes. Freezing them in dark
+  // mode keeps the mental model honest: "Dark is a value overlay, not a
+  // separate schema." If the user wants to rename or add a shade, they
+  // flip back to Light.
+  const structuralDisabledTitle = isDark
+    ? "Switch to Light to change structure"
+    : undefined;
+
   return (
     <div className="rounded-xl border border-stroke bg-panel p-4 shadow-[0_1px_0_0_rgba(0,0,0,0.02)]">
       <div className="mb-4 flex items-center gap-2">
         <span
           className="size-6 shrink-0 rounded-md border border-stroke"
-          style={{ backgroundColor: family.DEFAULT }}
+          style={{ backgroundColor: headerSwatch }}
         />
         <input
           value={localName}
+          readOnly={isDark}
           onChange={(e) => setLocalName(e.target.value)}
           onBlur={() => {
+            if (isDark) return;
             const trimmed = localName.trim();
             if (!trimmed || trimmed === name) {
               setLocalName(name);
@@ -332,28 +491,38 @@ function ColorFamilyCard({
             onRename(trimmed);
           }}
           onKeyDown={(e) => {
+            if (isDark) return;
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             if (e.key === "Escape") {
               setLocalName(name);
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className="min-w-0 flex-1 bg-transparent text-[13px] font-semibold text-ink outline-none focus:text-accent-ink"
+          title={structuralDisabledTitle}
+          className={
+            "min-w-0 flex-1 bg-transparent text-[13px] font-semibold outline-none " +
+            (isDark
+              ? "cursor-not-allowed text-ink-muted"
+              : "text-ink focus:text-accent-ink")
+          }
         />
         <span className="font-mono text-[10.5px] text-ink-faint">
           {shadeKeys.length} shade{shadeKeys.length === 1 ? "" : "s"}
         </span>
         <button
           onClick={addShade}
-          className="flex items-center gap-1 rounded-md border border-stroke bg-panel-soft px-2 py-1 text-[10.5px] text-ink-muted hover:text-ink hover:border-stroke-strong"
+          disabled={isDark}
+          title={structuralDisabledTitle}
+          className="flex items-center gap-1 rounded-md border border-stroke bg-panel-soft px-2 py-1 text-[10.5px] text-ink-muted transition hover:text-ink hover:border-stroke-strong disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-ink-muted disabled:hover:border-stroke"
         >
           <AppIcon name="Plus" size={10} /> Shade
         </button>
         {onDelete ? (
           <button
             onClick={onDelete}
-            title="Remove family"
-            className="grid size-6 place-items-center rounded-md text-ink-faint hover:bg-rose-50 hover:text-rose-600"
+            disabled={isDark}
+            title={isDark ? structuralDisabledTitle : "Remove family"}
+            className="grid size-6 place-items-center rounded-md text-ink-faint transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-ink-faint"
           >
             <AppIcon name="Trash" size={11} />
           </button>
@@ -361,23 +530,48 @@ function ColorFamilyCard({
       </div>
 
       <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
-        {shadeKeys.map((variant) => (
-          <ShadeTile
-            key={variant}
-            family={name}
-            variant={variant}
-            value={family[variant]}
-            onValueChange={(v) => setShade(variant, v)}
-            onRename={
-              variant === "DEFAULT"
-                ? undefined
-                : (newKey) => renameShade(variant, newKey)
-            }
-            onRemove={
-              variant === "DEFAULT" ? undefined : () => removeShade(variant)
-            }
-          />
-        ))}
+        {shadeKeys.map((variant) => {
+          const lightValue = family[variant];
+          const darkOverride = darkFamily?.[variant];
+          // In dark mode the tile DISPLAYS the effective dark value (the
+          // override if set, otherwise the inherited light value). Edits go
+          // to `onDarkShadeChange` — the first edit materializes an
+          // override even if the user was just staring at the inherited
+          // color a moment ago.
+          const effectiveValue = isDark
+            ? darkOverride ?? lightValue
+            : lightValue;
+          return (
+            <ShadeTile
+              key={variant}
+              family={name}
+              variant={variant}
+              value={effectiveValue}
+              mode={mode}
+              hasDarkOverride={darkOverride !== undefined}
+              inheritedLightValue={isDark ? lightValue : undefined}
+              onValueChange={(v) => {
+                if (isDark) onDarkShadeChange(variant, v);
+                else setShade(variant, v);
+              }}
+              onClearDarkOverride={
+                isDark && darkOverride !== undefined
+                  ? () => onClearDarkShade(variant)
+                  : undefined
+              }
+              onRename={
+                isDark || variant === "DEFAULT"
+                  ? undefined
+                  : (newKey) => renameShade(variant, newKey)
+              }
+              onRemove={
+                isDark || variant === "DEFAULT"
+                  ? undefined
+                  : () => removeShade(variant)
+              }
+            />
+          );
+        })}
       </div>
     </div>
   );
@@ -387,17 +581,36 @@ function ShadeTile({
   family,
   variant,
   value,
+  mode,
+  hasDarkOverride,
+  inheritedLightValue,
   onValueChange,
+  onClearDarkOverride,
   onRename,
   onRemove,
 }: {
   family: string;
   variant: string;
   value: string;
+  mode: ColorsMode;
+  /**
+   * Dark mode: does this shade have a user-set override? Drives the
+   * "inherited from light" badge (when false) and the clear button
+   * (when true).
+   *
+   * Ignored in light mode.
+   */
+  hasDarkOverride: boolean;
+  /** Light value shown as a tooltip on the inherit badge. Dark mode only. */
+  inheritedLightValue: string | undefined;
   onValueChange: (next: string) => void;
+  /** Only supplied in dark mode when an override exists. */
+  onClearDarkOverride?: () => void;
   onRename?: (next: string) => void;
   onRemove?: () => void;
 }) {
+  const isDark = mode === "dark";
+  const isInheritedInDark = isDark && !hasDarkOverride;
   const [localKey, setLocalKey] = useState(variant);
   const [localValue, setLocalValue] = useState(value);
   const lastPropKey = useRef(variant);
@@ -419,16 +632,32 @@ function ShadeTile({
     variant === "DEFAULT"
       ? `--color-${family}`
       : `--color-${family}-${variant}`;
-  const utility =
+  const baseUtility =
     variant === "DEFAULT" ? `bg-${family}` : `bg-${family}-${variant}`;
+  // Dark mode hints the `dark:` Tailwind variant — that's what a user
+  // would actually type to target this shade. In light mode the bare
+  // utility is correct. Keeping the hint honest matters: it's the most
+  // common thing users copy out of the studio.
+  const utility = isDark ? `dark:${baseUtility}` : baseUtility;
 
   return (
-    <div className="group relative flex flex-col gap-1.5 rounded-lg border border-stroke bg-panel-soft p-2 hover:border-stroke-strong">
+    <div
+      className={
+        "group relative flex flex-col gap-1.5 rounded-lg border p-2 transition " +
+        (isDark
+          ? "border-stroke bg-panel-soft/70 hover:border-accent/40"
+          : "border-stroke bg-panel-soft hover:border-stroke-strong")
+      }
+    >
       {/* Big swatch — the color picker lives on top so clicks-to-edit just work. */}
       <label
         className="relative block h-[72px] cursor-pointer overflow-hidden rounded-md border border-stroke"
         style={{ backgroundColor: value }}
-        title={`Click to pick — ${value}`}
+        title={
+          isInheritedInDark
+            ? `Inherits light — ${value}. Click to set a dark override.`
+            : `Click to pick — ${value}`
+        }
       >
         <input
           type="color"
@@ -439,6 +668,56 @@ function ShadeTile({
           }}
           className="absolute inset-0 size-full cursor-pointer opacity-0"
         />
+        {/* Diagonal hatching: makes "inherited" visually unmistakable even
+            when the underlying color is similar to an override. Purely
+            decorative — doesn't block the color picker underneath. */}
+        {isInheritedInDark ? (
+          <div
+            className="pointer-events-none absolute inset-0 opacity-40 mix-blend-overlay"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(45deg, rgba(0,0,0,0.35) 0 6px, transparent 6px 12px)",
+            }}
+          />
+        ) : null}
+        {/* Top-left corner badge: either "inherit" (dark mode, no override)
+            or an accent dot (dark mode, override exists). Light mode: no
+            badge — there's only one palette there. */}
+        {isDark ? (
+          isInheritedInDark ? (
+            <span
+              title={
+                inheritedLightValue
+                  ? `Inheriting light (${inheritedLightValue})`
+                  : "Inheriting light"
+              }
+              className="pointer-events-none absolute left-1 top-1 rounded bg-black/50 px-1.5 py-0.5 font-mono text-[9px] font-medium text-white backdrop-blur-sm"
+            >
+              inherit
+            </span>
+          ) : (
+            <span
+              title="Dark override set"
+              className="pointer-events-none absolute left-1 top-1 grid size-4 place-items-center rounded-full bg-accent text-[8px] text-panel shadow"
+            >
+              <AppIcon name="Moon" size={9} />
+            </span>
+          )
+        ) : null}
+        {/* Clear dark override — reverts to inheriting light. Only shown in
+            dark mode when an override exists. */}
+        {onClearDarkOverride ? (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              onClearDarkOverride();
+            }}
+            title="Clear dark override (inherit light)"
+            className="absolute right-1 top-1 grid size-5 place-items-center rounded bg-white/80 text-ink-faint opacity-0 backdrop-blur-sm transition hover:text-ink group-hover:opacity-100"
+          >
+            <AppIcon name="Rotate" size={10} />
+          </button>
+        ) : null}
         {onRemove ? (
           <button
             onClick={(e) => {
@@ -490,7 +769,17 @@ function ShadeTile({
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
         placeholder="#rrggbb"
-        className="rounded border border-stroke bg-panel px-1.5 py-1 font-mono text-[11px] text-ink outline-none focus:border-accent"
+        title={
+          isInheritedInDark
+            ? "Inheriting light — edits here create a dark override"
+            : undefined
+        }
+        className={
+          "rounded border bg-panel px-1.5 py-1 font-mono text-[11px] outline-none focus:border-accent " +
+          (isInheritedInDark
+            ? "border-dashed border-stroke text-ink-muted italic"
+            : "border-stroke text-ink")
+        }
       />
 
       <div className="flex flex-col gap-0.5 pt-0.5">
