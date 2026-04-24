@@ -164,6 +164,66 @@ const STATE_TABS = ["base", "hover", "focus", "active"] as const;
 type StateVariant = (typeof STATE_TABS)[number];
 const STATE_PREFIXES = new Set<string>(STATE_TABS.filter((s) => s !== "base"));
 
+/**
+ * Per-state visual style used to tie the three state-axis surfaces together:
+ *
+ *   1. The segmented state-tab row (active tab picks up the state's fill)
+ *   2. The per-field override dots shown on base mode
+ *   3. The per-field override accent on inputs in a non-base state
+ *
+ * Keeping hex + Tailwind utility names in one table means picking a new
+ * palette (or flipping to a darker tint in dark mode later) is a single-row
+ * edit that updates all three surfaces in lockstep.
+ *
+ * Why these three colors:
+ *   hover  = amber   — warm "attention" signal, matches native hover affordances.
+ *   focus  = sky     — canonical focus color across OS-level AX guidance.
+ *   active = violet  — press/engaged; distinct from hover without reading as error.
+ *
+ * The `fieldClasses` block uses arbitrary-descendant selectors to re-theme
+ * the .wnd-field shell any control in a DualRow wraps with — it's the
+ * surface we need to tint to signal "this field owns its value in state X".
+ * Pre-declaring the full class strings here (not interpolating `${color}`)
+ * keeps Tailwind's JIT detection happy.
+ */
+const STATE_PIP_COLOR: Record<Exclude<StateVariant, "base">, string> = {
+  hover: "#f59e0b", // amber-500
+  focus: "#0ea5e9", // sky-500
+  active: "#8b5cf6", // violet-500
+};
+
+const STATE_STYLE: Record<
+  Exclude<StateVariant, "base">,
+  {
+    /** Active-tab treatment — solid fill + readable text. */
+    tabActive: string;
+    /** Small trailing dot on the INactive tab when that state has edits. */
+    tabDot: string;
+    /** Descendant selectors that tint the `.wnd-field` shells inside a
+     *  DualRow that owns an override in this state. */
+    fieldClasses: string;
+  }
+> = {
+  hover: {
+    tabActive: "bg-amber-500 text-white shadow-sm",
+    tabDot: "bg-amber-500",
+    fieldClasses:
+      "[&_.wnd-field]:border-amber-500/60 [&_.wnd-field]:shadow-[inset_0_0_0_1px_rgba(245,158,11,0.18)]",
+  },
+  focus: {
+    tabActive: "bg-sky-500 text-white shadow-sm",
+    tabDot: "bg-sky-500",
+    fieldClasses:
+      "[&_.wnd-field]:border-sky-500/60 [&_.wnd-field]:shadow-[inset_0_0_0_1px_rgba(14,165,233,0.18)]",
+  },
+  active: {
+    tabActive: "bg-violet-500 text-white shadow-sm",
+    tabDot: "bg-violet-500",
+    fieldClasses:
+      "[&_.wnd-field]:border-violet-500/60 [&_.wnd-field]:shadow-[inset_0_0_0_1px_rgba(139,92,246,0.18)]",
+  },
+};
+
 const BREAKPOINT_PREFIXES = new Set<string>(["sm", "md", "lg", "xl", "2xl"]);
 type BreakpointVariant = "base" | "sm" | "md" | "lg" | "xl" | "2xl";
 
@@ -224,11 +284,6 @@ function parseVariant(cls: string): { key: VariantKey; bare: string } {
   return { key: { dark, state, bp }, bare: rest };
 }
 
-/** Which slot does this class live in? */
-function variantOf(cls: string): VariantKey {
-  return parseVariant(cls).key;
-}
-
 /** Strip every known prefix (dark + bp + state). Safe on bare classes. */
 function stripVariant(cls: string): string {
   return parseVariant(cls).bare;
@@ -257,6 +312,100 @@ function withVariant(key: VariantKey, cls: string): string {
 function clsBelongsTo(cls: string, key: VariantKey): boolean {
   const v = parseVariant(cls).key;
   return v.dark === key.dark && v.state === key.state && v.bp === key.bp;
+}
+
+/**
+ * Per-field variant metadata the inspector passes to `DualRow` so each
+ * property row can signal its relationship to the base state.
+ *
+ * Three mutually-expressive flags (all false = "nothing to say"):
+ *
+ *   • inherited: non-base state is displaying a value that actually lives
+ *     on the base variant — editing here creates a first-time override.
+ *     The label picks up an "↳" indicator and the input drops into a
+ *     dashed/muted treatment so the user reads "what you see is borrowed".
+ *
+ *   • overrides: non-base state owns its own class for this property. The
+ *     input picks up an accent-colored frame so users can tell at a glance
+ *     "this field is contributing its own value, not inheriting".
+ *
+ *   • overriddenBy: base state, OTHER states (hover/focus/active within the
+ *     same dark+bp slot) that have their own class for this property.
+ *     Renders as a tight row of colored pips under the label so the user
+ *     can scan "which fields already have non-base variants" without
+ *     tabbing through every state.
+ *
+ * All three are computed relative to the CURRENT dark+bp slot — mixing
+ * across dark or across breakpoints would mislead the indicator.
+ */
+type FieldMeta = {
+  inherited: boolean;
+  overrides: boolean;
+  overriddenBy: Array<Exclude<StateVariant, "base">>;
+  /**
+   * The state the meta was computed against. Carried here (rather than
+   * threaded as a separate DualRow prop) so field styling can pick the
+   * matching `STATE_STYLE` entry when `overrides` is true — the tint
+   * color should echo the currently-active tab, not a generic accent.
+   */
+  currentState: StateVariant;
+};
+
+/**
+ * Bucket the element's raw classes by state within the current dark+bp
+ * slot, stripping variant prefixes. Other dark/bp slots are ignored —
+ * overrides and inherits are per-slot concepts (an `md:hover:bg-red-500`
+ * should not show as "overrides" when the user is editing the `lg` slot).
+ *
+ * The result is a 4-key map: { base, hover, focus, active } → bare
+ * classes. Reused by `makeMetaFor` for every DualRow in the panel.
+ */
+function classesByState(
+  rawClasses: string[],
+  dark: boolean,
+  bp: BreakpointVariant,
+): Record<StateVariant, string[]> {
+  const out: Record<StateVariant, string[]> = {
+    base: [],
+    hover: [],
+    focus: [],
+    active: [],
+  };
+  for (const c of rawClasses) {
+    const v = parseVariant(c);
+    if (v.key.dark !== dark) continue;
+    if (v.key.bp !== bp) continue;
+    out[v.key.state].push(v.bare);
+  }
+  return out;
+}
+
+/**
+ * Build a `FieldMeta` closure bound to a specific slot. Callers pass a
+ * predicate that recognizes "this class belongs to field X" (e.g.
+ * `DISPLAY_VALUES.has(c)` for the Display row) and get back a meta record
+ * describing how that field relates to the base state.
+ *
+ * Factored out of the component render so the same machinery can be used
+ * by any future inspector section without reaching into React state.
+ */
+function makeMetaFor(
+  byState: Record<StateVariant, string[]>,
+  state: StateVariant,
+): (pred: (bare: string) => boolean) => FieldMeta {
+  return (pred) => {
+    const owned = byState[state].some(pred);
+    const baseHas = byState.base.some(pred);
+    const inherited = state !== "base" && !owned && baseHas;
+    const overrides = state !== "base" && owned;
+    const overriddenBy: Array<Exclude<StateVariant, "base">> = [];
+    if (state === "base") {
+      for (const s of ["hover", "focus", "active"] as const) {
+        if (byState[s].some(pred)) overriddenBy.push(s);
+      }
+    }
+    return { inherited, overrides, overriddenBy, currentState: state };
+  };
 }
 
 const DISPLAY_OPTIONS: { value: string; icon: AppIconName; label: string }[] = [
@@ -516,20 +665,30 @@ export function RightPanel() {
     [rawClasses, currentKey],
   );
 
+  // Classes grouped by state within the current dark+bp slot. Everything
+  // else in this component — variant counts, per-field inherit/override
+  // meta — is derived from this. Cheaper to build once and read from
+  // than to re-scan `rawClasses` per property row.
+  const byState = useMemo(
+    () => classesByState(rawClasses, isDark, breakpoint),
+    [rawClasses, isDark, breakpoint],
+  );
+
   // How many overrides each state has *in the current dark+bp slot*.
   // Mixing counts across dark or breakpoint would mislead the pip — a tab
   // saying "3 edits" when two of them only live in the other theme or at a
   // different breakpoint would make the user expect changes they don't see.
   const variantCounts = useMemo(() => {
     const counts: Record<StateVariant, number> = { base: 0, hover: 0, focus: 0, active: 0 };
-    for (const c of rawClasses) {
-      const v = variantOf(c);
-      if (v.dark !== isDark) continue;
-      if (v.bp !== breakpoint) continue;
-      counts[v.state] = (counts[v.state] ?? 0) + 1;
-    }
+    for (const s of STATE_TABS) counts[s] = byState[s].length;
     return counts;
-  }, [rawClasses, isDark, breakpoint]);
+  }, [byState]);
+
+  // Per-field inheritance/override metadata — lets each DualRow signal
+  // whether it's showing an inherited base value, a state-owned override,
+  // or which other states override this property (for base-state pips).
+  // Closure over `byState + state` so callers just pass the predicate.
+  const metaFor = useMemo(() => makeMetaFor(byState, state), [byState, state]);
 
   const find = (pred: (c: string) => boolean) => classes.find(pred);
 
@@ -566,6 +725,13 @@ export function RightPanel() {
         c.startsWith(`${prefix}-`) &&
         mergedByName.has(c.slice(prefix.length + 1)),
     );
+
+  // Color-class predicate factory for `metaFor`. Mirrors `findColorClass`
+  // but as a boolean check — used to tell whether a hover/focus/active
+  // slot owns a bg/text/border color for the pip indicators.
+  const colorPred = (prefix: string) => (bare: string) =>
+    bare.startsWith(`${prefix}-`) &&
+    mergedByName.has(bare.slice(prefix.length + 1));
 
   const currentGap = find((c) => /^gap-/.test(c));
   const currentDisplay = find((c) => DISPLAY_VALUES.has(c));
@@ -806,15 +972,24 @@ export function RightPanel() {
       {component ? (
       <div className="flex items-center justify-between gap-2 border-b border-stroke px-3 py-1.5">
         {/* Segmented state selector. Same visual language as the breakpoint
-            picker in the Topbar — thin rounded container, ink fill for the
-            active segment, muted text elsewhere. Overrides on a non-active
-            state are signaled with a tiny accent dot after the label so you
-            can tell at a glance which variants have edits without shouting
-            about it with colored pills. */}
+            picker in the Topbar, but each non-base segment picks up the
+            same hue used for its base-mode override dot and its field
+            tint — amber for hover, sky for focus, violet for active. This
+            makes the three surfaces (tabs, dots, field frames) read as
+            one color language: a pip on the base row says "there's edits
+            in that state"; tapping the matching tab tints the inputs the
+            same way; glancing back shows them in base as the same color.
+            Base stays ink-filled — it's the neutral, default slot. */}
         <div className="inline-flex items-center rounded-md border border-stroke bg-panel-soft/60 p-0.5">
           {STATE_TABS.map((s) => {
             const active = s === state;
             const hasEdits = variantCounts[s] > 0;
+            const activeClass =
+              s === "base"
+                ? "bg-ink text-panel shadow-sm"
+                : STATE_STYLE[s].tabActive;
+            const dotClass =
+              s === "base" ? "bg-accent" : STATE_STYLE[s].tabDot;
             return (
               <button
                 key={s}
@@ -822,14 +997,15 @@ export function RightPanel() {
                 title={hasEdits && !active ? `${variantCounts[s]} override${variantCounts[s] === 1 ? "" : "s"}` : undefined}
                 className={
                   "relative flex items-center gap-1 rounded-[5px] px-2 py-0.5 text-[10.5px] font-medium transition " +
-                  (active
-                    ? "bg-ink text-panel shadow-sm"
-                    : "text-ink-muted hover:text-ink")
+                  (active ? activeClass : "text-ink-muted hover:text-ink")
                 }
               >
                 {s}
                 {hasEdits && !active ? (
-                  <span className="size-1 rounded-full bg-accent" aria-hidden />
+                  <span
+                    className={"size-1 rounded-full " + dotClass}
+                    aria-hidden
+                  />
                 ) : null}
               </button>
             );
@@ -894,7 +1070,10 @@ export function RightPanel() {
             />
           }
         >
-          <DualRow label="Display">
+          <DualRow
+            label="Display"
+            meta={metaFor((c) => DISPLAY_VALUES.has(c))}
+          >
             <IconToggleGroup
               options={DISPLAY_OPTIONS}
               current={currentDisplay}
@@ -902,7 +1081,10 @@ export function RightPanel() {
               span={2}
             />
           </DualRow>
-          <DualRow label="Direction">
+          <DualRow
+            label="Direction"
+            meta={metaFor((c) => DIRECTION_VALUES.has(c))}
+          >
             <IconToggleGroup
               options={DIRECTION_OPTIONS}
               current={currentDirection}
@@ -910,7 +1092,10 @@ export function RightPanel() {
               span={2}
             />
           </DualRow>
-          <DualRow label="Justify">
+          <DualRow
+            label="Justify"
+            meta={metaFor((c) => JUSTIFY_VALUES.has(c))}
+          >
             <IconToggleGroup
               options={JUSTIFY_OPTIONS}
               current={currentJustify}
@@ -919,7 +1104,10 @@ export function RightPanel() {
               showLabel
             />
           </DualRow>
-          <DualRow label="Align">
+          <DualRow
+            label="Align"
+            meta={metaFor((c) => ALIGN_VALUES.has(c))}
+          >
             <IconToggleGroup
               options={ALIGN_OPTIONS}
               current={currentAlignItems}
@@ -933,7 +1121,10 @@ export function RightPanel() {
               to the same value collapses back to the tidy `gap-N` unified
               form in the class list. Arrows on the hint are a lightweight
               axis marker so users don't need to remember x/y. */}
-          <DualRow label="Gap">
+          <DualRow
+            label="Gap"
+            meta={metaFor((c) => /^gap(?:-[xy])?-/.test(c))}
+          >
             <SpacingAxisSelect
               n={gapN.x}
               axisHint="↔"
@@ -956,7 +1147,10 @@ export function RightPanel() {
         </Group>
 
         <Group title="Sizing">
-          <DualRow label="Width">
+          <DualRow
+            label="Width"
+            meta={metaFor((c) => /^w-/.test(c))}
+          >
             <InputBox
               value={stripPrefix(currentWidth, "w-") ?? ""}
               placeholder={!currentWidth && measured ? `${Math.round(measured.w)}px` : "auto"}
@@ -965,7 +1159,10 @@ export function RightPanel() {
             />
             <InputBox value="100" hint="%" readOnly />
           </DualRow>
-          <DualRow label="Height">
+          <DualRow
+            label="Height"
+            meta={metaFor((c) => /^h-/.test(c))}
+          >
             <InputBox
               value={stripPrefix(currentHeight, "h-") ?? ""}
               placeholder={!currentHeight && measured ? `${Math.round(measured.h)}px` : "auto"}
@@ -1011,6 +1208,7 @@ export function RightPanel() {
           </DualRow>
           <DualRow
             label="Size"
+            meta={metaFor((c) => TEXT_SIZE_VALUES.has(c))}
             scrub={{
               current: currentSize ?? "text-base",
               values: TEXT_SIZES.map((s) => s.value),
@@ -1040,6 +1238,7 @@ export function RightPanel() {
           </DualRow>
           <DualRow
             label="Weight"
+            meta={metaFor((c) => FONT_WEIGHT_VALUES.has(c))}
             scrub={{
               current: currentWeight ?? "font-normal",
               values: FONT_WEIGHTS.map((f) => f.value),
@@ -1069,7 +1268,10 @@ export function RightPanel() {
               readOnly
             />
           </DualRow>
-          <DualRow label="Align">
+          <DualRow
+            label="Align"
+            meta={metaFor((c) => TEXT_ALIGN_VALUES.has(c))}
+          >
             <div className="col-span-2 flex items-center rounded-md border border-stroke bg-panel-soft p-0.5">
               {TEXT_ALIGNS.map((a) => {
                 const active = currentAlign === a.value;
@@ -1093,7 +1295,7 @@ export function RightPanel() {
         </Group>
 
         <Group title="Colors">
-          <DualRow label="Fill">
+          <DualRow label="Fill" meta={metaFor(colorPred("bg"))}>
             <ColorDropdown
               color={bgColor}
               palette={mergedPalette}
@@ -1105,7 +1307,7 @@ export function RightPanel() {
               {...previewColor(currentBg, "bg")}
             />
           </DualRow>
-          <DualRow label="Text">
+          <DualRow label="Text" meta={metaFor(colorPred("text"))}>
             <ColorDropdown
               color={textColor}
               palette={mergedPalette}
@@ -1117,7 +1319,7 @@ export function RightPanel() {
               {...previewColor(currentTextColor, "text")}
             />
           </DualRow>
-          <DualRow label="Border">
+          <DualRow label="Border" meta={metaFor(colorPred("border"))}>
             <ColorDropdown
               color={borderColor}
               palette={mergedPalette}
@@ -1158,6 +1360,13 @@ export function RightPanel() {
               where it acts as "set all four at once". */}
           <DualRow
             label="Radius"
+            meta={metaFor(
+              (c) =>
+                RADIUS_VALUES.has(c) ||
+                /^rounded(?:-(?:tl|tr|br|bl|t|b|l|r))?(?:-(?:none|sm|md|lg|xl|2xl|3xl|full))?$/.test(
+                  c,
+                ),
+            )}
             scrub={{
               current: currentRadius ?? "rounded-none",
               values: RADIUS_OPTIONS.map((r) => r.value),
@@ -1208,6 +1417,7 @@ export function RightPanel() {
           ) : null}
           <DualRow
             label="Width"
+            meta={metaFor((c) => BORDER_WIDTH_VALUES.has(c))}
             scrub={{
               current: currentBorderW,
               values: BORDER_WIDTHS.map((b) => b.value),
@@ -1237,7 +1447,10 @@ export function RightPanel() {
               readOnly
             />
           </DualRow>
-          <DualRow label="Style">
+          <DualRow
+            label="Style"
+            meta={metaFor((c) => BORDER_STYLE_VALUES.has(c))}
+          >
             <SelectBox
               value={currentBorderStyle ?? "border-solid"}
               hint={(currentBorderStyle ?? "border-solid").replace(
@@ -1580,20 +1793,108 @@ function DualRow({
   label,
   children,
   scrub,
+  meta,
 }: {
   label: string;
   children: React.ReactNode;
   scrub?: ScrubConfig;
+  /** Per-field variant metadata — drives inherit indicator, override
+   *  accent, and base-mode pips. Undefined = neutral styling. */
+  meta?: FieldMeta;
 }) {
+  const inherited = meta?.inherited ?? false;
+  const overrides = meta?.overrides ?? false;
+  const overriddenBy = meta?.overriddenBy ?? [];
+  const currentState = meta?.currentState ?? "base";
+
+  // Tailwind's arbitrary-descendant selectors let us restyle the input
+  // children without threading props through every control. `.wnd-field`
+  // is the shared field-shell class set on InputBox / SelectBox / the
+  // ColorDropdown trigger etc., so these rules hit the visible frame
+  // without touching any control's own focus/hover styles.
+  //
+  //   inherited → dashed border + muted text: "this value isn't mine"
+  //   overrides → state-colored border + subtle inset ring that matches
+  //               the active state tab and the base-mode pips, so the
+  //               whole three-surface system reads as one color language.
+  //
+  // No-op in base state or when meta is omitted.
+  const descendantClasses = inherited
+    ? "[&_.wnd-field]:border-dashed [&_.wnd-field]:text-ink-muted [&_.wnd-field]:italic"
+    : overrides && currentState !== "base"
+      ? STATE_STYLE[currentState as Exclude<StateVariant, "base">].fieldClasses
+      : "";
+
   return (
-    <div className="grid min-w-0 grid-cols-[46px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-1.5">
-      {scrub ? (
-        <ScrubLabel label={label} scrub={scrub} />
-      ) : (
-        <span className="truncate text-[10.5px] text-ink-muted">{label}</span>
-      )}
+    <div
+      className={
+        "grid min-w-0 grid-cols-[46px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-1.5 " +
+        descendantClasses
+      }
+    >
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="flex min-w-0 items-center gap-1">
+          {inherited ? (
+            // Unicode ↳ (U+21B3): reads as "fallback/inherited from above"
+            // without pulling an icon import. Aligns with the dashed-border
+            // treatment on the field next to it so the signal reads both
+            // on the label and the input at once.
+            <span
+              aria-hidden
+              title="Inherits from base — edit to override"
+              className="shrink-0 font-mono text-[9px] leading-none text-ink-faint"
+            >
+              ↳
+            </span>
+          ) : null}
+          {scrub ? (
+            <ScrubLabel label={label} scrub={scrub} />
+          ) : (
+            <span
+              className={
+                "truncate text-[10.5px] " +
+                (inherited ? "italic text-ink-faint" : "text-ink-muted")
+              }
+            >
+              {label}
+            </span>
+          )}
+        </span>
+        {overriddenBy.length > 0 ? (
+          <StateOverridePips states={overriddenBy} />
+        ) : null}
+      </div>
       {children}
     </div>
+  );
+}
+
+/**
+ * Tight row of state-colored dots showing which non-base states override
+ * the adjacent property. Lives under the field label when the current
+ * state is base; invisible otherwise. Each pip's title attribute carries
+ * the state name so hovering gives the attribution without adding text
+ * that would bloat the 46px label column.
+ */
+function StateOverridePips({
+  states,
+}: {
+  states: Array<Exclude<StateVariant, "base">>;
+}) {
+  return (
+    <span
+      className="flex items-center gap-0.5"
+      title={`Also overridden in: ${states.join(", ")}`}
+    >
+      {states.map((s) => (
+        <span
+          key={s}
+          aria-label={`override in ${s}`}
+          className="size-1.5 rounded-full"
+          style={{ backgroundColor: STATE_PIP_COLOR[s] }}
+        />
+      ))}
+    </span>
   );
 }
 

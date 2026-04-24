@@ -289,7 +289,7 @@ function ChatInput({ session }: { session: Session | null }) {
       >
         {/* Status chip — only while streaming */}
         {streaming ? (
-          <div className="flex items-center gap-1.5 self-start rounded-full bg-accent-tint px-2 py-0.5 text-[10.5px] font-medium text-accent">
+          <div className="flex items-center gap-1.5 self-start rounded-md bg-accent-tint px-2 py-0.5 text-[10.5px] font-medium text-accent">
             <AppIcon name="Loader" size={10} className="animate-spin" />
             {statusText}
           </div>
@@ -301,7 +301,7 @@ function ChatInput({ session }: { session: Session | null }) {
             {composerTags.map((t) => (
               <span
                 key={t.id}
-                className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent-tint px-1.5 py-0.5 text-[10.5px] font-medium text-accent-ink"
+                className="inline-flex items-center gap-1 rounded-md border border-accent/30 bg-accent-tint px-1.5 py-0.5 text-[10.5px] font-medium text-accent-ink"
                 title={`Scoped: ${t.name}`}
               >
                 <AppIcon name="AtSign" size={9} />
@@ -311,7 +311,7 @@ function ChatInput({ session }: { session: Session | null }) {
                     e.stopPropagation();
                     removeComposerTag(t.id);
                   }}
-                  className="grid size-3.5 place-items-center rounded-full text-accent-ink/70 hover:bg-accent/15 hover:text-accent-ink"
+                  className="grid size-3.5 place-items-center rounded-md text-accent-ink/70 hover:bg-accent/15 hover:text-accent-ink"
                   title="Remove"
                 >
                   <AppIcon name="X" size={8} />
@@ -332,7 +332,7 @@ function ChatInput({ session }: { session: Session | null }) {
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           placeholder="Ask anything…"
-          className="max-h-[160px] w-full resize-none bg-transparent text-[12.5px] leading-[1.5] text-ink placeholder:text-ink-faint outline-none"
+          className="max-h-[180px] w-full resize-none bg-transparent text-[12.5px] leading-normal text-ink placeholder:text-ink-faint outline-none"
         />
 
         {/* Footer: @picker + model chip + send */}
@@ -344,7 +344,7 @@ function ChatInput({ session }: { session: Session | null }) {
             <button
               onClick={stop}
               title="Stop"
-              className="grid size-8 place-items-center rounded-full bg-ink text-panel transition hover:brightness-110"
+              className="grid size-6 place-items-center rounded-md bg-ink text-panel transition hover:brightness-110"
             >
               <AppIcon name="Square" size={11} />
             </button>
@@ -354,13 +354,13 @@ function ChatInput({ session }: { session: Session | null }) {
               disabled={!canSend}
               title="Send (Enter)"
               className={
-                "grid size-8 place-items-center rounded-full transition " +
+                "grid size-6 place-items-center rounded-md transition " +
                 (canSend
                   ? "bg-accent text-white hover:brightness-110"
                   : "bg-panel-soft text-ink-faint cursor-not-allowed")
               }
             >
-              <AppIcon name="Send" size={12} className="-ml-0.5" />
+              <AppIcon name="Send" size={10} className="-ml-0.5" />
             </button>
           )}
         </div>
@@ -414,10 +414,10 @@ function AtPicker() {
     <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="grid size-7 place-items-center rounded-full border border-stroke bg-panel text-ink-soft transition hover:bg-panel-soft"
+        className="grid size-5 place-items-center rounded-md border border-stroke bg-panel text-ink-soft transition hover:bg-panel-soft"
         title="Tag a component for the agent to scope this message to"
       >
-        <AppIcon name="AtSign" size={11} />
+        <AppIcon name="AtSign" size={10} />
       </button>
       {open ? (
         <div className="absolute bottom-full left-0 z-30 mb-1.5 w-[240px] overflow-hidden rounded-xl border border-stroke bg-panel shadow-lg">
@@ -504,10 +504,10 @@ function ModelChip() {
     <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 rounded-full border border-stroke bg-panel px-2 py-1 text-[11px] font-medium text-ink-soft transition hover:bg-panel-soft"
+        className="flex items-center gap-1.5 rounded-md border border-stroke bg-panel px-1.5 py-0.5 text-[11px] font-medium text-ink-soft transition hover:bg-panel-soft"
         title={current.description}
       >
-        <AppIcon name={PROVIDER_ICON[current.provider]} size={12} className="text-ink" />
+        <AppIcon name={PROVIDER_ICON[current.provider]} size={10} className="text-ink" />
         {current.label}
         <AppIcon name="ChevronDown" size={9} className="text-ink-faint" />
       </button>
