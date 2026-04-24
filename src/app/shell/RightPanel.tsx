@@ -9,6 +9,7 @@ import {
 import { useProject } from "@/store/project";
 import { useMetrics } from "@/store/metrics";
 import { useTheme } from "@/store/theme";
+import { useCanvas } from "@/store/canvas";
 import { DesignSystemPanel } from "./DesignSystemPanel";
 import {
   addClassesAtPath,
@@ -136,66 +137,91 @@ function radiusSuffixPx(suffix: string | undefined): number | null {
 }
 
 // ---------------------------------------------------------------------------
-// State variants (Tailwind class-name prefixes).
+// Variant prefixes (Tailwind class-name prefixes).
 //
-// The top of the inspector lets the user pick which *state* they're editing.
-// Picking `hover` means every class written by the panel lands with a
-// `hover:` prefix, and the reads are filtered to only show classes that
-// carry that prefix (stripped, so the field helpers keep working on bare
-// Tailwind tokens). `base` is the default, unprefixed slot.
+// Every write this inspector emits is scoped by a `VariantKey` composed of
+// three independent dimensions:
+//
+//   • state  — base | hover | focus | active   (state-tab row inside panel)
+//   • dark   — boolean                         (theme store / Topbar toggle)
+//   • bp     — base | sm | md | lg | xl | 2xl  (breakpoint picker in Topbar)
+//
+// Picking `hover` on the state tabs while the theme is dark and the Topbar
+// says `md` produces writes like `dark:md:hover:bg-red-500` — and reads
+// filter to classes that live in exactly that slot. Three independent axes
+// × four/two/six values = 48 possible slots per element, but the user only
+// ever sees the single slot they've dialed into. Flipping any of the three
+// pickers moves every read/write in this panel to a new slot without
+// rewriting any of the downstream logic.
 //
 // A few Tailwind variants we chose NOT to surface yet:
 //   - `group-hover:` / `peer-*` — cross-element state, more complex to
 //     explain in a flat inspector.
-//   - `dark:` — deserves its own top-level toggle (design-system level,
-//     not per-element).
-//   - Breakpoints (`sm:`, `md:` …) — responsive belongs in a separate
-//     picker so it stacks cleanly with state variants, not a shared tab.
+//   - Arbitrary prefixes (`[&:has(…)]:` etc.) — power-user territory.
 // ---------------------------------------------------------------------------
 
 const STATE_TABS = ["base", "hover", "focus", "active"] as const;
 type StateVariant = (typeof STATE_TABS)[number];
-const VARIANT_PREFIXES = new Set<string>(STATE_TABS.filter((s) => s !== "base"));
+const STATE_PREFIXES = new Set<string>(STATE_TABS.filter((s) => s !== "base"));
+
+const BREAKPOINT_PREFIXES = new Set<string>(["sm", "md", "lg", "xl", "2xl"]);
+type BreakpointVariant = "base" | "sm" | "md" | "lg" | "xl" | "2xl";
 
 /**
- * A class in Wonder can live in one of up to four "slots":
+ * A class in Wonder can live in any combination of the three variant axes.
+ * Examples:
  *
- *     bare:              bg-red-500
- *     state-only:        hover:bg-red-500
- *     dark-only:         dark:bg-red-500
- *     dark + state:      dark:hover:bg-red-500
+ *     bare:                    bg-red-500
+ *     hover:                   hover:bg-red-500
+ *     dark:                    dark:bg-red-500
+ *     md:                      md:bg-red-500
+ *     dark + hover:            dark:hover:bg-red-500
+ *     md + hover:              md:hover:bg-red-500
+ *     dark + md + hover:       dark:md:hover:bg-red-500
  *
- * `VariantKey` packs both dimensions into one object so every reader/writer
- * in the inspector can speak the same language. `state` comes from the
- * state-tab selector, `dark` comes from the global theme store — flipping
- * either moves every read/write to a different slot without rewriting any
- * of the downstream logic.
+ * `VariantKey` packs all three dimensions into one object so every
+ * reader/writer in the inspector can speak the same language. Flipping any
+ * axis moves every read/write to a different slot without downstream
+ * changes.
  */
-type VariantKey = { dark: boolean; state: StateVariant };
+type VariantKey = {
+  dark: boolean;
+  state: StateVariant;
+  bp: BreakpointVariant;
+};
 
-/** Parse the leading `dark:` / state: / `dark:state:` / `state:dark:`
- *  prefixes off a class. Tailwind is permissive about order, so we peel up
- *  to TWO prefixes rather than assuming a canonical sequence — components
- *  hand-edited in code won't always follow the convention we emit. */
+/** Peel leading `dark:` / breakpoint: / state: prefixes off a class in any
+ *  order. Tailwind is permissive about order, and components hand-edited in
+ *  code won't always follow the convention we emit — so we keep pulling
+ *  recognized prefixes until we hit something that isn't one of ours.
+ *
+ *  The loop cap (6) is defensive: a Tailwind class has at most a handful of
+ *  stacked prefixes before the utility body; an unbounded loop here would
+ *  be a footgun if we ever added a prefix that could also appear inside a
+ *  utility name. */
 function parseVariant(cls: string): { key: VariantKey; bare: string } {
   let dark = false;
   let state: StateVariant = "base";
+  let bp: BreakpointVariant = "base";
   let rest = cls;
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 6; i++) {
     const idx = rest.indexOf(":");
     if (idx < 0) break;
     const p = rest.slice(0, idx);
     if (p === "dark") {
       dark = true;
       rest = rest.slice(idx + 1);
-    } else if (VARIANT_PREFIXES.has(p)) {
+    } else if (STATE_PREFIXES.has(p)) {
       state = p as StateVariant;
+      rest = rest.slice(idx + 1);
+    } else if (BREAKPOINT_PREFIXES.has(p)) {
+      bp = p as BreakpointVariant;
       rest = rest.slice(idx + 1);
     } else {
       break;
     }
   }
-  return { key: { dark, state }, bare: rest };
+  return { key: { dark, state, bp }, bare: rest };
 }
 
 /** Which slot does this class live in? */
@@ -203,28 +229,34 @@ function variantOf(cls: string): VariantKey {
   return parseVariant(cls).key;
 }
 
-/** Strip every known prefix (dark + state). Safe on bare classes. */
+/** Strip every known prefix (dark + bp + state). Safe on bare classes. */
 function stripVariant(cls: string): string {
   return parseVariant(cls).bare;
 }
 
-/** Compose the canonical `dark:state:class` form for a write. We always emit
- *  `dark:` OUTER and the state inner — Tailwind accepts either order when
- *  reading but we pick one for consistency so diffs don't flicker. */
+/** Compose the canonical `dark:bp:state:class` form for a write. We always
+ *  emit the prefixes in a fixed order — Tailwind accepts any order when
+ *  reading, but picking one keeps diffs stable and makes round-trips (edit
+ *  → parse → write) idempotent.
+ *
+ *  Order matches Tailwind's recommendation (responsive outer, then dark,
+ *  then state — but we put `dark` outermost as our house convention since
+ *  dark is the theme-wide axis; see globals.css for the same layering). */
 function withVariant(key: VariantKey, cls: string): string {
   let out = cls;
   if (key.state !== "base") out = `${key.state}:${out}`;
+  if (key.bp !== "base") out = `${key.bp}:${out}`;
   if (key.dark) out = `dark:${out}`;
   return out;
 }
 
 /** True when `cls` belongs to the given slot. Drives both the filtered
  *  class list the inspector shows AND the scoped "clear before write"
- *  passes in color / gap / corner writers so a dark-hover edit never
- *  stomps on the base, light-hover, or dark-base values. */
+ *  passes in color / gap / corner writers so an edit in one slot never
+ *  stomps on another slot's values. */
 function clsBelongsTo(cls: string, key: VariantKey): boolean {
   const v = parseVariant(cls).key;
-  return v.dark === key.dark && v.state === key.state;
+  return v.dark === key.dark && v.state === key.state && v.bp === key.bp;
 }
 
 const DISPLAY_OPTIONS: { value: string; icon: AppIconName; label: string }[] = [
@@ -429,17 +461,18 @@ export function RightPanel() {
   const setSource = useProject((s) => s.setSource);
 
   const [state, setState] = useState<StateVariant>("base");
-  // Theme is the *other* dimension of the variant key. Flipping dark mode
-  // in the Topbar instantly redirects every read/write in this panel to the
-  // `dark:` slot so edits made while in dark mode only affect dark styles —
-  // exactly like Webflow's dark-mode editor. When we're in light mode the
-  // `dark` dimension is `false`, so the panel edits the canonical light
-  // classes and dark overrides stay hidden from view.
+  // Theme + breakpoint are the OTHER two dimensions of the variant key.
+  // Flipping dark mode in the Topbar instantly redirects every read/write to
+  // the `dark:` slot; flipping the breakpoint redirects to `md:`/`lg:`/etc.
+  // Both are global pickers (not per-element) so the user stays in a
+  // consistent "what am I editing?" mental state while moving between
+  // components. Light + base bp = the canonical unprefixed slot.
   const theme = useTheme((s) => s.theme);
   const isDark = theme === "dark";
+  const breakpoint = useCanvas((s) => s.breakpoint) as BreakpointVariant;
   const currentKey: VariantKey = useMemo(
-    () => ({ dark: isDark, state }),
-    [isDark, state],
+    () => ({ dark: isDark, state, bp: breakpoint }),
+    [isDark, state, breakpoint],
   );
   // Layers tab is deliberately not here — removed for now until the AST-based
   // tree view can be built properly (needs delete-node + move-node helpers).
@@ -483,19 +516,20 @@ export function RightPanel() {
     [rawClasses, currentKey],
   );
 
-  // How many overrides each state has *in the current dark/light dimension*.
-  // Scoped to the active dark slot because mixing light+dark counts would
-  // confuse the pip — a tab saying "3 edits" when two of them only live in
-  // the other theme would mislead the user about what they'll actually see.
+  // How many overrides each state has *in the current dark+bp slot*.
+  // Mixing counts across dark or breakpoint would mislead the pip — a tab
+  // saying "3 edits" when two of them only live in the other theme or at a
+  // different breakpoint would make the user expect changes they don't see.
   const variantCounts = useMemo(() => {
     const counts: Record<StateVariant, number> = { base: 0, hover: 0, focus: 0, active: 0 };
     for (const c of rawClasses) {
       const v = variantOf(c);
       if (v.dark !== isDark) continue;
+      if (v.bp !== breakpoint) continue;
       counts[v.state] = (counts[v.state] ?? 0) + 1;
     }
     return counts;
-  }, [rawClasses, isDark]);
+  }, [rawClasses, isDark, breakpoint]);
 
   const find = (pred: (c: string) => boolean) => classes.find(pred);
 
@@ -801,20 +835,32 @@ export function RightPanel() {
             );
           })}
         </div>
-        {/* Dark-mode chip — makes it impossible to miss that edits you're
-            about to make land in the `dark:` slot. The chip itself is a
-            read-only indicator; the user flips dark mode from the Topbar
-            toggle (same control that repaints the app chrome), which keeps
-            "editing dark" and "viewing dark" from drifting apart. */}
-        {isDark ? (
-          <span
-            className="inline-flex items-center gap-1 rounded-full border border-stroke bg-panel-soft/60 px-2 py-0.5 font-mono text-[9.5px] text-ink-muted"
-            title="Edits are being written with the dark: prefix. Toggle the theme in the Topbar to edit light styles."
-          >
-            <AppIcon name="Moon" size={9} className="text-ink-muted" />
-            dark:
-          </span>
-        ) : null}
+        {/* Axis chips — read-only indicators that make it impossible to miss
+            which dark/breakpoint slot the writes are landing in. The user
+            flips each from the Topbar (theme toggle + breakpoint picker),
+            which keeps "editing X" and "viewing X" from ever drifting apart.
+            We render them in the same row as the state tabs because all
+            three are facets of the same question: "which slot am I
+            editing?". */}
+        <div className="flex items-center gap-1">
+          {breakpoint !== "base" ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-stroke bg-panel-soft/60 px-2 py-0.5 font-mono text-[9.5px] text-ink-muted"
+              title={`Edits are being written with the ${breakpoint}: prefix. Change the breakpoint in the Topbar to edit another slot.`}
+            >
+              {breakpoint}:
+            </span>
+          ) : null}
+          {isDark ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-stroke bg-panel-soft/60 px-2 py-0.5 font-mono text-[9.5px] text-ink-muted"
+              title="Edits are being written with the dark: prefix. Toggle the theme in the Topbar to edit light styles."
+            >
+              <AppIcon name="Moon" size={9} className="text-ink-muted" />
+              dark:
+            </span>
+          ) : null}
+        </div>
       </div>
       ) : null}
 

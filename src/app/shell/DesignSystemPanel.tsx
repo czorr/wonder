@@ -46,11 +46,6 @@ export function DesignSystemPanel() {
         <h2 className="text-[11px] font-semibold tracking-wide text-ink">
           Project design system
         </h2>
-        <p className="mt-0.5 text-[10.5px] text-ink-faint leading-snug">
-          Colors, fonts, and radii for the whole project. Saved to{" "}
-          <span className="font-mono">design/tokens.json</span> and mirrored
-          to <span className="font-mono">design/tokens.css</span>.
-        </p>
         <button
           onClick={openExtract}
           className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-accent/30 bg-accent-tint px-2 py-1.5 text-[11px] font-medium text-accent-ink hover:bg-accent/10"

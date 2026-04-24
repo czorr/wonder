@@ -1,6 +1,6 @@
 import { AppIcon } from "@/app/icons";
 import { useEffect } from "react";
-import { useCanvas } from "@/store/canvas";
+import { useCanvas, BREAKPOINTS } from "@/store/canvas";
 import { useProject } from "@/store/project";
 import { useChat } from "@/store/chat";
 import { useTheme } from "@/store/theme";
@@ -16,8 +16,6 @@ import {
   actionSaveAs,
 } from "@/persistence";
 
-const BREAKPOINTS = ["base", "sm", "md", "lg", "xl", "2xl"] as const;
-
 export function Topbar() {
   const zoom = useCanvas((s) => s.zoom);
   const zoomIn = useCanvas((s) => s.zoomIn);
@@ -28,6 +26,8 @@ export function Topbar() {
   const setTool = useCanvas((s) => s.setTool);
   const playMode = useCanvas((s) => s.playMode);
   const togglePlayMode = useCanvas((s) => s.togglePlayMode);
+  const breakpoint = useCanvas((s) => s.breakpoint);
+  const setBreakpoint = useCanvas((s) => s.setBreakpoint);
   const theme = useTheme((s) => s.theme);
   const toggleTheme = useTheme((s) => s.toggleTheme);
 
@@ -207,17 +207,26 @@ export function Topbar() {
         <div className="flex items-center gap-2 rounded-lg border border-stroke bg-panel pl-2.5 pr-0.5 py-0.5">
           <span className="text-[11px] font-medium text-ink-muted">Breakpoint</span>
           <div className="flex items-center">
-            {BREAKPOINTS.map((bp) => (
-              <button
-                key={bp}
-                className={
-                  "rounded-md px-2 py-1 text-[11px] font-medium transition " +
-                  (bp === "md" ? "bg-ink text-panel" : "text-ink-muted hover:text-ink")
-                }
-              >
-                {bp}
-              </button>
-            ))}
+            {BREAKPOINTS.map((bp) => {
+              const active = breakpoint === bp;
+              return (
+                <button
+                  key={bp}
+                  onClick={() => setBreakpoint(bp)}
+                  title={
+                    bp === "base"
+                      ? "Base (no prefix) — applies from 0px"
+                      : `${bp}: prefix — edits land as ${bp}:className`
+                  }
+                  className={
+                    "rounded-md px-2 py-1 text-[11px] font-medium transition " +
+                    (active ? "bg-ink text-panel" : "text-ink-muted hover:text-ink")
+                  }
+                >
+                  {bp}
+                </button>
+              );
+            })}
           </div>
         </div>
         {/* Theme toggle. Flips `.dark` on <html> (repaints chrome), pushes

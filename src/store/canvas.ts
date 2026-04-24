@@ -2,6 +2,31 @@ import { create } from "zustand";
 
 export type CanvasTool = "select" | "hand";
 
+/**
+ * Breakpoint that the inspector is CURRENTLY editing for.
+ *
+ * "base" means "no prefix" — writes land as unprefixed Tailwind utilities and
+ * apply from `0px` upward. The named breakpoints mirror Tailwind's defaults
+ * and prefix every class the inspector writes (e.g. picking `md` and setting
+ * `flex-col` → `flex` produces `md:flex`).
+ *
+ * This does NOT (yet) resize the canvas viewport to the target breakpoint's
+ * width — Wonder components render at their authored size and the selector is
+ * a *class-targeting* affordance, not a device simulator. The Topbar selector
+ * therefore answers the question "which responsive slot am I editing?", not
+ * "what device am I previewing on?". Viewport simulation is a separate
+ * feature and will layer on top of this once landed.
+ */
+export type Breakpoint = "base" | "sm" | "md" | "lg" | "xl" | "2xl";
+export const BREAKPOINTS: readonly Breakpoint[] = [
+  "base",
+  "sm",
+  "md",
+  "lg",
+  "xl",
+  "2xl",
+] as const;
+
 type CanvasState = {
   zoom: number;
   pan: { x: number; y: number };
@@ -16,6 +41,11 @@ type CanvasState = {
    * it as "preview the component in context" without losing zoom/pan.
    */
   playMode: boolean;
+  /**
+   * Which breakpoint slot the inspector writes into. `"base"` = unprefixed
+   * classes. See `Breakpoint` for the full semantics.
+   */
+  breakpoint: Breakpoint;
 
   setZoom: (z: number | ((prev: number) => number)) => void;
   setPan: (p: { x: number; y: number } | ((prev: { x: number; y: number }) => { x: number; y: number })) => void;
@@ -28,6 +58,7 @@ type CanvasState = {
   closePreview: () => void;
   setPlayMode: (on: boolean) => void;
   togglePlayMode: () => void;
+  setBreakpoint: (bp: Breakpoint) => void;
 };
 
 const ZOOM_MIN = 0.1;
@@ -52,6 +83,10 @@ export const useCanvas = create<CanvasState>((set) => ({
   previewOpen: false,
   tool: "select",
   playMode: false,
+  // Default to the "base" slot — edits land as unprefixed classes, which is
+  // the 99% case for new components. Flipping to `md`/`lg`/etc. is an
+  // explicit opt-in via the Topbar.
+  breakpoint: "base",
 
   setTool(t) {
     set({ tool: t });
@@ -62,6 +97,9 @@ export const useCanvas = create<CanvasState>((set) => ({
   },
   togglePlayMode() {
     set((s) => ({ playMode: !s.playMode }));
+  },
+  setBreakpoint(bp) {
+    set({ breakpoint: bp });
   },
 
   setZoom(z) {
