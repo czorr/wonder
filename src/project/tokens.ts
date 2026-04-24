@@ -36,6 +36,20 @@ export type ColorFamily = {
   [variant: string]: string;
 };
 
+/**
+ * Partial override table for dark mode. Users can override any subset of any
+ * family — e.g. only flip `surface.DEFAULT` and `neutral.ink`, leave
+ * `primary` alone. Unspecified keys fall through to the light value via the
+ * CSS cascade (light values live in `:root`, dark overrides in `.dark`).
+ *
+ * Shape mirrors `Tokens["colors"]` but every shade is optional, and the
+ * DEFAULT requirement is relaxed — a dark override that only sets `soft`
+ * without re-declaring DEFAULT is perfectly valid.
+ */
+export type DarkColorOverrides = {
+  [family: string]: { [variant: string]: string };
+};
+
 export type Tokens = {
   $schema: TokensSchemaVersion;
   colors: {
@@ -48,6 +62,16 @@ export type Tokens = {
     /** Users can add `success`, `danger`, `accent2`, etc. */
     [family: string]: ColorFamily;
   };
+  /**
+   * Dark-mode color overrides. When the iframe (or a tokens.css consumer) has
+   * `.dark` on its root, any variant listed here wins over the light value.
+   * Keys not overridden stay at their light value — no need to redeclare the
+   * full family.
+   *
+   * Optional: a project without dark support just leaves this undefined and
+   * `.dark { … }` isn't emitted.
+   */
+  darkColors?: DarkColorOverrides;
   fonts: {
     sans: string;
     mono: string;
@@ -89,6 +113,33 @@ export function defaultTokens(): Tokens {
         sunken: "#fafaf9",
       },
     },
+    // Dark defaults roughly mirror the Wonder chrome's dark palette so that
+    // a brand-new project's canvas visibly reacts to the dark toggle without
+    // any additional configuration. Users can override any subset — the keys
+    // here are sensible starting points, not prescriptions.
+    //
+    //   surface goes near-black with a slightly lifted "raised" and deeper
+    //   "sunken" to preserve the same z-axis hierarchy as light mode.
+    //   neutral swaps ink↔soft (readable on dark backgrounds).
+    //   primary keeps its brand hue but nudges `ink` lighter so it remains
+    //   legible when placed on a dark surface as a label color.
+    darkColors: {
+      surface: {
+        DEFAULT: "#17171c",
+        raised: "#1e1e24",
+        sunken: "#0d0d10",
+      },
+      neutral: {
+        DEFAULT: "#a1a1aa",
+        soft: "#27272a",
+        ink: "#f4f4f5",
+      },
+      primary: {
+        soft: "#064e3b",
+        tint: "#022c22",
+        ink: "#6ee7b7",
+      },
+    },
     fonts: {
       sans: `"Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`,
       mono: `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace`,
@@ -122,9 +173,40 @@ export function parseTokens(raw: unknown): Tokens {
   return {
     $schema: TOKENS_SCHEMA_VERSION,
     colors: mergeColors(obj.colors, def.colors),
+    darkColors: mergeDarkColors(obj.darkColors, def.darkColors),
     fonts: mergeFonts(obj.fonts, def.fonts),
     radii: mergeStringRecord(obj.radii, def.radii),
   };
+}
+
+/**
+ * Parse dark overrides. Unlike `mergeColors`, we do NOT require `DEFAULT` on
+ * any family — the whole point is that users can override one shade at a
+ * time. An invalid shape (non-object, non-strings) falls back to the default
+ * dark palette so projects migrating from v1 schema still get sensible
+ * behavior on theme flip.
+ */
+function mergeDarkColors(
+  raw: unknown,
+  fallback: DarkColorOverrides | undefined,
+): DarkColorOverrides | undefined {
+  if (raw === undefined) return fallback;
+  if (!raw || typeof raw !== "object") return fallback;
+  const out: DarkColorOverrides = {};
+  for (const [family, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== "object") continue;
+    const entries: Record<string, string> = {};
+    for (const [variant, shade] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      if (typeof shade === "string") entries[variant] = shade;
+    }
+    if (Object.keys(entries).length > 0) out[family] = entries;
+  }
+  // An empty object is still a valid "user cleared dark mode" signal — return
+  // it rather than the fallback. That way hand-editing `"darkColors": {}`
+  // disables the feature for a project.
+  return out;
 }
 
 function mergeColors(
@@ -241,6 +323,23 @@ export function tokensToCss(tokens: Tokens): string {
 
   lines.push("}");
   lines.push("");
+
+  // Dark overrides — emitted OUTSIDE the `@theme` block. Tailwind v4's
+  // `@theme` only accepts a single static value per token; the conventional
+  // way to do themed tokens is to redeclare the same custom properties on a
+  // `.dark` selector so they cascade at runtime. The `@custom-variant dark`
+  // directive wired into the project's entry CSS turns `dark:bg-surface`
+  // etc. into rules that cascade off the same `.dark` root.
+  const darkEntries = flatDarkEntries(tokens);
+  if (darkEntries.length > 0) {
+    lines.push(".dark {");
+    for (const [name, value] of darkEntries) {
+      lines.push(`  ${name}: ${value};`);
+    }
+    lines.push("}");
+    lines.push("");
+  }
+
   return lines.join("\n");
 }
 
@@ -260,11 +359,38 @@ export function tokensToCss(tokens: Tokens): string {
 // Intentionally narrow scope:
 //   - No hover/focus variants. Add if demand shows up; the plain utility
 //     covers static styling which is ~all a designer surface needs.
-//   - No dark mode. Same reason.
+//   - Dark mode works via a `.dark { --color-* }` override block. The
+//     utility classes themselves reference `var(--color-*)`, so flipping the
+//     custom property under `.dark` transparently re-colorizes every
+//     `bg-surface` / `text-neutral-ink` / etc. without duplicating rules.
+//     The iframe runtime toggles `.dark` on its own `<html>` in response to
+//     the app's theme store — see sandbox-runtime.html.
 //   - `rounded-*` only overrides keys that exist in `tokens.radii`. Keys
 //     Tailwind already ships (`rounded-2xl`, `rounded-3xl`) stay with
 //     Tailwind's defaults so existing components don't suddenly change.
 // ---------------------------------------------------------------------------
+
+/**
+ * Flatten dark overrides to `[cssVarName, value]` pairs, ready to drop into
+ * a `.dark { … }` block. Shared by both the sandbox CSS emitter and the
+ * generated `tokens.css` so the two stay in lockstep — if dark behavior
+ * diverges between preview and build output, debugging becomes a nightmare.
+ */
+function flatDarkEntries(tokens: Tokens): Array<[string, string]> {
+  const dark = tokens.darkColors;
+  if (!dark) return [];
+  const out: Array<[string, string]> = [];
+  for (const [family, shades] of Object.entries(dark)) {
+    for (const [variant, value] of Object.entries(shades)) {
+      const name =
+        variant === "DEFAULT"
+          ? `--color-${family}`
+          : `--color-${family}-${variant}`;
+      out.push([name, value]);
+    }
+  }
+  return out;
+}
 
 export function tokensToSandboxCss(tokens: Tokens): string {
   const lines: string[] = [];
@@ -290,6 +416,19 @@ export function tokensToSandboxCss(tokens: Tokens): string {
     lines.push(`  --radius-${k}: ${v};`);
   }
   lines.push("}");
+
+  // Dark overrides — emit only the variables the user actually flipped.
+  // Unspecified keys stay at their `:root` light value via the cascade,
+  // which is what we want (a project that only flips surface + neutral
+  // shouldn't have primary suddenly go to a guessed dark shade).
+  const darkEntries = flatDarkEntries(tokens);
+  if (darkEntries.length > 0) {
+    lines.push(".dark {");
+    for (const [name, value] of darkEntries) {
+      lines.push(`  ${name}: ${value};`);
+    }
+    lines.push("}");
+  }
 
   // Color utilities — bg / text / border for every family×variant.
   for (const [family, shades] of Object.entries(tokens.colors)) {
