@@ -41,6 +41,12 @@ import {
   type ColorFamily,
   type Tokens,
 } from "@/project/tokens";
+import {
+  buildStackWithGoogleFont,
+  primaryFamily,
+  type GoogleFontCategory,
+} from "@/project/googleFonts";
+import { FontPicker } from "@/app/shell/FontPicker";
 
 /**
  * Which palette the Colors section is currently displaying / writing into.
@@ -849,6 +855,7 @@ function FontsSection({
     >
       <FontCard
         label="Sans"
+        role="sans"
         cssVar="--font-sans"
         utility="font-sans"
         value={tokens.fonts.sans}
@@ -858,6 +865,7 @@ function FontsSection({
       />
       <FontCard
         label="Mono"
+        role="mono"
         cssVar="--font-mono"
         utility="font-mono"
         sampleText="const tokens = { primary: '#10b981' };"
@@ -869,6 +877,7 @@ function FontsSection({
       {tokens.fonts.display !== undefined ? (
         <FontCard
           label="Display"
+          role="display"
           cssVar="--font-display"
           utility="font-display"
           sampleText="Design systems, live."
@@ -886,8 +895,29 @@ function FontsSection({
   );
 }
 
+/**
+ * Category filters that make sense per role. `sans` shows every modern
+ * face EXCEPT monospace (display/handwriting still work for quirky UIs);
+ * `mono` is strict; `display` narrows to faces designed for headlines.
+ * The picker shows an accurate "X / Y" count based on these filters.
+ */
+const ROLE_CATEGORIES: Record<
+  "sans" | "mono" | "display",
+  ReadonlySet<GoogleFontCategory>
+> = {
+  sans: new Set<GoogleFontCategory>([
+    "sans-serif",
+    "serif",
+    "display",
+    "handwriting",
+  ]),
+  mono: new Set<GoogleFontCategory>(["monospace"]),
+  display: new Set<GoogleFontCategory>(["display", "serif", "sans-serif"]),
+};
+
 function FontCard({
   label,
+  role,
   cssVar,
   utility,
   value,
@@ -896,6 +926,8 @@ function FontCard({
   sampleSize = 22,
 }: {
   label: string;
+  /** Which stack this card edits — drives picker categories + fallback chain. */
+  role: "sans" | "mono" | "display";
   cssVar: string;
   utility: string;
   value: string;
@@ -904,11 +936,14 @@ function FontCard({
   sampleSize?: number;
 }) {
   const [local, setLocal] = useState(value);
+  const [advanced, setAdvanced] = useState(false);
   const lastProp = useRef(value);
   if (lastProp.current !== value) {
     lastProp.current = value;
     setLocal(value);
   }
+
+  const primary = primaryFamily(value);
 
   return (
     <div className="rounded-xl border border-stroke bg-panel p-4">
@@ -921,6 +956,9 @@ function FontCard({
         </span>
       </div>
 
+      {/* Live sample. `fontFamily: value` uses the FULL stack, so if the
+          Google Font hasn't loaded yet the browser paints in the fallback
+          and swaps in as soon as the <link> resolves. */}
       <div
         className="mt-3 rounded-lg border border-stroke bg-panel-soft/60 px-4 py-5 text-ink"
         style={{ fontFamily: value, fontSize: sampleSize, lineHeight: 1.25 }}
@@ -928,17 +966,47 @@ function FontCard({
         {sampleText}
       </div>
 
-      <textarea
-        rows={2}
-        value={local}
-        onChange={(e) => setLocal(e.target.value)}
-        onBlur={() => {
-          if (local !== value) onCommit(local);
-        }}
-        spellCheck={false}
-        placeholder='e.g. "Inter", ui-sans-serif, system-ui'
-        className="mt-3 w-full resize-none rounded-md border border-stroke bg-panel px-2.5 py-2 font-mono text-[11px] text-ink outline-none focus:border-accent"
-      />
+      {/* Picker: searchable list of Google Fonts. Committing here rewrites
+          the stack with sensible fallbacks for this role. Power users can
+          toggle "Advanced" to edit the raw stack, which is still the
+          ultimate source of truth. */}
+      <div className="mt-3">
+        <FontPicker
+          value={primary}
+          onPick={(name) => {
+            const nextStack = buildStackWithGoogleFont(name, role);
+            onCommit(nextStack);
+          }}
+          allowedCategories={ROLE_CATEGORIES[role]}
+          roleLabel={label}
+        />
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setAdvanced((v) => !v)}
+        className="mt-2 flex items-center gap-1 text-[10.5px] text-ink-faint hover:text-ink-muted"
+      >
+        <AppIcon
+          name={advanced ? "ChevronDown" : "ChevronRight"}
+          size={10}
+        />
+        {advanced ? "Hide raw stack" : "Edit raw stack"}
+      </button>
+
+      {advanced ? (
+        <textarea
+          rows={2}
+          value={local}
+          onChange={(e) => setLocal(e.target.value)}
+          onBlur={() => {
+            if (local !== value) onCommit(local);
+          }}
+          spellCheck={false}
+          placeholder='e.g. "Inter", ui-sans-serif, system-ui'
+          className="mt-2 w-full resize-none rounded-md border border-stroke bg-panel px-2.5 py-2 font-mono text-[11px] text-ink outline-none focus:border-accent"
+        />
+      ) : null}
     </div>
   );
 }

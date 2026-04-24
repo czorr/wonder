@@ -28,6 +28,28 @@ import {
   type ColorFamily,
   type Tokens,
 } from "@/project/tokens";
+import {
+  buildStackWithGoogleFont,
+  primaryFamily,
+  type GoogleFontCategory,
+} from "@/project/googleFonts";
+import { FontPicker } from "@/app/shell/FontPicker";
+
+// Same role → category mapping used by TokensStudio. Kept in sync by hand —
+// if the two ever drift we want them reconciled, not silently diverging.
+const ROLE_CATEGORIES: Record<
+  "sans" | "mono" | "display",
+  ReadonlySet<GoogleFontCategory>
+> = {
+  sans: new Set<GoogleFontCategory>([
+    "sans-serif",
+    "serif",
+    "display",
+    "handwriting",
+  ]),
+  mono: new Set<GoogleFontCategory>(["monospace"]),
+  display: new Set<GoogleFontCategory>(["display", "serif", "sans-serif"]),
+};
 
 // Families that the editor won't let you delete — the store+CSS emitter
 // can survive their absence, but losing them silently would surprise users
@@ -486,6 +508,7 @@ function FontsSection({
     >
       <FontRow
         label="Sans"
+        role="sans"
         cssVarHint="--font-sans"
         value={tokens.fonts.sans}
         onCommit={(v) =>
@@ -494,6 +517,7 @@ function FontsSection({
       />
       <FontRow
         label="Mono"
+        role="mono"
         cssVarHint="--font-mono"
         value={tokens.fonts.mono}
         onCommit={(v) =>
@@ -503,6 +527,7 @@ function FontsSection({
       {tokens.fonts.display !== undefined ? (
         <FontRow
           label="Display"
+          role="display"
           cssVarHint="--font-display"
           value={tokens.fonts.display}
           onCommit={(v) =>
@@ -519,39 +544,66 @@ function FontsSection({
 
 function FontRow({
   label,
+  role,
   value,
   cssVarHint,
   onCommit,
 }: {
   label: string;
+  /** Drives the picker's category filter and the emitted fallback chain. */
+  role: "sans" | "mono" | "display";
   value: string;
   cssVarHint: string;
   onCommit: (v: string) => void;
 }) {
   const [local, setLocal] = useState(value);
+  const [advanced, setAdvanced] = useState(false);
   const lastProp = useRef(value);
   if (lastProp.current !== value) {
     lastProp.current = value;
     setLocal(value);
   }
+  const primary = primaryFamily(value);
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between">
         <span className="text-[10.5px] text-ink-muted">{label}</span>
         <span className="font-mono text-[9.5px] text-ink-faint">{cssVarHint}</span>
       </div>
-      <textarea
-        rows={2}
-        value={local}
-        onChange={(e) => setLocal(e.target.value)}
-        onBlur={() => {
-          if (local !== value) onCommit(local);
-        }}
-        spellCheck={false}
-        placeholder='e.g. "Inter", ui-sans-serif, system-ui'
-        className="w-full resize-none rounded-md border border-stroke bg-panel px-2 py-1 font-mono text-[10.5px] text-ink outline-none focus:border-accent"
-        style={{ fontFamily: value }}
+      {/* Primary picker — same dropdown as the full-screen studio so a user
+          editing fonts in the compact sidebar gets the whole Google Fonts
+          catalog rather than typing stacks by hand. */}
+      <FontPicker
+        value={primary}
+        onPick={(name) => onCommit(buildStackWithGoogleFont(name, role))}
+        allowedCategories={ROLE_CATEGORIES[role]}
+        roleLabel={label}
       />
+      <button
+        type="button"
+        onClick={() => setAdvanced((v) => !v)}
+        className="flex items-center gap-0.5 self-start text-[9.5px] text-ink-faint hover:text-ink-muted"
+      >
+        <AppIcon
+          name={advanced ? "ChevronDown" : "ChevronRight"}
+          size={9}
+        />
+        {advanced ? "Hide raw stack" : "Edit raw stack"}
+      </button>
+      {advanced ? (
+        <textarea
+          rows={2}
+          value={local}
+          onChange={(e) => setLocal(e.target.value)}
+          onBlur={() => {
+            if (local !== value) onCommit(local);
+          }}
+          spellCheck={false}
+          placeholder='e.g. "Inter", ui-sans-serif, system-ui'
+          className="w-full resize-none rounded-md border border-stroke bg-panel px-2 py-1 font-mono text-[10.5px] text-ink outline-none focus:border-accent"
+          style={{ fontFamily: value }}
+        />
+      ) : null}
     </div>
   );
 }

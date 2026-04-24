@@ -19,6 +19,7 @@ import {
 } from "@/ast/tailwind";
 import { PALETTE, type PaletteColor } from "@/ast/palette";
 import type { Tokens } from "@/project/tokens";
+import { primaryFamily } from "@/project/googleFonts";
 import { bindTextPropAtPath, listProps, unbindPropAtPath } from "@/ast/props";
 import { getTextAtPath, isTextLeaf } from "@/ast/text";
 import { parseSource } from "@/ast/parse";
@@ -745,6 +746,47 @@ export function RightPanel() {
   const currentWeight = find((c) => FONT_WEIGHT_VALUES.has(c));
   const currentAlign = find((c) => TEXT_ALIGN_VALUES.has(c));
 
+  // Font family utilities available to this project. `font-sans` / `font-mono`
+  // are always present; `font-display` only when the user defined it. We
+  // show the primary family from each stack as the label ("Inter", "JetBrains
+  // Mono", …) so the dropdown reads as "which font am I picking" rather than
+  // "which CSS variable" — the utility name stays in the right-aligned hint
+  // to keep the Tailwind mental model honest.
+  const fontFamilyOptions = useMemo(() => {
+    const opts: { value: string; label: string; right?: string }[] = [
+      {
+        value: "font-sans",
+        label: primaryFamily(tokens.fonts.sans) || "sans",
+        right: "font-sans",
+      },
+      {
+        value: "font-mono",
+        label: primaryFamily(tokens.fonts.mono) || "mono",
+        right: "font-mono",
+      },
+    ];
+    if (tokens.fonts.display) {
+      opts.push({
+        value: "font-display",
+        label: primaryFamily(tokens.fonts.display) || "display",
+        right: "font-display",
+      });
+    }
+    return opts;
+  }, [tokens.fonts.sans, tokens.fonts.mono, tokens.fonts.display]);
+  const FONT_FAMILY_VALUES = useMemo(
+    () => new Set(fontFamilyOptions.map((o) => o.value)),
+    [fontFamilyOptions],
+  );
+  const currentFamily = find((c) => FONT_FAMILY_VALUES.has(c));
+  const currentFamilyLabel = currentFamily
+    ? fontFamilyOptions.find((o) => o.value === currentFamily)?.label ??
+      currentFamily
+    : // No explicit utility on the element → it inherits `font-sans` from
+      // the document root (tokens.fonts.sans). Show that family's name so
+      // the field never reads as blank/"Inter-forever".
+      primaryFamily(tokens.fonts.sans) || "sans";
+
   const currentBg = findColorClass("bg");
   const currentTextColor = findColorClass("text");
   const currentBorderColor = findColorClass("border");
@@ -1203,8 +1245,19 @@ export function RightPanel() {
         </Group>
 
         <Group title="Typography">
-          <DualRow label="Family">
-            <InputBox value="Inter" hint="font-sans" readOnly full />
+          <DualRow
+            label="Family"
+            meta={metaFor((c) => FONT_FAMILY_VALUES.has(c))}
+          >
+            <div className="col-span-2">
+              <SelectBox
+                value={currentFamily ?? "font-sans"}
+                hint={currentFamilyLabel}
+                options={fontFamilyOptions}
+                onChange={(v) => commit(currentFamily, v)}
+                {...preview(currentFamily)}
+              />
+            </div>
           </DualRow>
           <DualRow
             label="Size"

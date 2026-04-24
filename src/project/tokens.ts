@@ -17,6 +17,11 @@
 // around conventions we don't have yet.
 // ---------------------------------------------------------------------------
 
+import {
+  extractGoogleFontsFromStacks,
+  googleFontsCssImport,
+} from "@/project/googleFonts";
+
 export const TOKENS_SCHEMA_VERSION = "wonder.tokens/v1";
 export type TokensSchemaVersion = typeof TOKENS_SCHEMA_VERSION;
 
@@ -286,8 +291,25 @@ export function tokensToCss(tokens: Tokens): string {
     " * Source of truth: design/tokens.json",
     " * ----------------------------------------------------------------- */",
     "",
-    "@theme {",
   ];
+
+  // Google Fonts @import goes OUTSIDE `@theme` (`@import` must precede any
+  // other at-rule) — Tailwind v4 handles this correctly and forwards the
+  // directive into the final compiled stylesheet so production builds pull
+  // the same faces the editor previews in.
+  const googleImport = googleFontsCssImport(
+    extractGoogleFontsFromStacks([
+      tokens.fonts.sans,
+      tokens.fonts.mono,
+      ...(tokens.fonts.display ? [tokens.fonts.display] : []),
+    ]),
+  );
+  if (googleImport) {
+    lines.push(googleImport.trimEnd());
+    lines.push("");
+  }
+
+  lines.push("@theme {");
 
   // Colors — emit DEFAULT first within each family so the file reads
   // top-down like a design reference.
@@ -394,6 +416,20 @@ function flatDarkEntries(tokens: Tokens): Array<[string, string]> {
 
 export function tokensToSandboxCss(tokens: Tokens): string {
   const lines: string[] = [];
+
+  // Google Fonts @import, if any of the font stacks reference a face we
+  // recognize. Emitted at the TOP of the stylesheet because `@import` is
+  // only legal before any other rule. Sandbox iframe's <style id="wonder-
+  // tokens"> picks this up on every token refresh — adding/removing a
+  // font in tokens immediately re-requests the right css2 URL.
+  const googleImport = googleFontsCssImport(
+    extractGoogleFontsFromStacks([
+      tokens.fonts.sans,
+      tokens.fonts.mono,
+      ...(tokens.fonts.display ? [tokens.fonts.display] : []),
+    ]),
+  );
+  if (googleImport) lines.push(googleImport.trimEnd());
 
   // :root custom properties — so rules can reference var(--color-*) and
   // users eyeballing devtools see the token values.
