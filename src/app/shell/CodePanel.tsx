@@ -307,13 +307,21 @@ declare module "motion" {
         </div>
       ) : null}
 
-      <div
-        className={
-          "flex items-center justify-between pr-2 " +
-          (collapsed ? "" : "border-b border-stroke")
-        }
-      >
-        <div className="flex items-center overflow-x-auto">
+      {/* Header row. Pill-style tabs: each tab is a fully rounded card
+          floating ABOVE the separator line rather than welded to it. The
+          welded "folder-tab" variant with pseudo-element fillets looked
+          good in theory but fought with the container's overflow clip and
+          never quite sold the continuity — pills sidestep that entirely
+          and read cleanly as navigation chips. Padding on the container
+          gives the pills breathing room on all sides. */}
+      <div className={
+        "flex items-center justify-between pr-2 " +
+        (collapsed ? "" : "border-b border-stroke")
+      }>
+        {/* Tab strip. Scrollbar chrome hidden because macOS with "Always
+            show scrollbars" was rendering an empty vertical rail to the
+            right of the tabs even when nothing overflowed. */}
+        <div className="flex items-center gap-1 overflow-x-auto px-2 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {openTabs.map((id) => {
             const c = components[id];
             if (!c) return null;
@@ -323,10 +331,23 @@ declare module "motion" {
                 key={id}
                 onMouseDown={() => setActiveTab(id)}
                 className={
-                  "flex shrink-0 items-center gap-1.5 border-r border-stroke pl-3 pr-2 py-2 text-[11px] cursor-pointer " +
+                  // Rounded top corners + flat bottom — gives the tab strip a
+                  // "folder tab" silhouette that reads as UI rather than
+                  // undifferentiated chrome. Active tab: bright panel bg with
+                  // an accent underline that peeks below the flat bottom,
+                  // visually welding it to the editor below. Inactive: soft
+                  // bg, muted text, faint top border so the stack reads as
+                  // layered cards.
+                  // Pill tabs: fully rounded on all four corners, with a
+                  // visible border on every side so each reads as its own
+                  // discrete chip. The active one flips to the brighter
+                  // `bg-panel` and gets a subtle ring-style shadow for a
+                  // hint of elevation; inactive ones sit on the softer
+                  // panel-soft background and brighten on hover.
+                  "group relative flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] cursor-pointer transition-colors " +
                   (isActive
-                    ? "bg-panel text-ink border-b-2 border-b-accent -mb-px"
-                    : "bg-panel-soft text-ink-muted hover:text-ink")
+                    ? "bg-panel text-ink border-stroke shadow-[0_1px_0_rgba(0,0,0,0.02)]"
+                    : "bg-panel-soft text-ink-muted border-stroke hover:bg-panel hover:text-ink")
                 }
               >
                 <AppIcon name="FileCode" size={12} className="text-ink-faint" />
@@ -336,7 +357,7 @@ declare module "motion" {
                     e.stopPropagation();
                     closeTab(id);
                   }}
-                  className="ml-1 grid size-4 place-items-center rounded text-ink-faint hover:bg-stroke hover:text-ink-muted"
+                  className="ml-1 grid size-4 place-items-center rounded-sm text-ink-faint hover:bg-stroke hover:text-ink-muted"
                 >
                   <AppIcon name="X" size={10} />
                 </button>
