@@ -41,7 +41,13 @@ import { useProject, type WonderComponent } from "@/store/project";
 import { Sandbox, type SandboxHandle } from "@/sandbox/Sandbox";
 import { bundle } from "@/sandbox/bundler";
 import { resolveAssets } from "@/sandbox/assetResolver";
+import {
+  buildProjectModules,
+  useProjectModulesSignature,
+  virtualPathFor,
+} from "@/sandbox/projectModules";
 import { useAssets } from "@/store/assets";
+import { useCanvas } from "@/store/canvas";
 import { useTheme } from "@/store/theme";
 import { tokensToSandboxCss } from "@/project/tokens";
 import { isPrimitiveFolder } from "@/project/primitives";
@@ -177,9 +183,16 @@ function LibraryTile({
   const sandboxRef = useRef<SandboxHandle | null>(null);
   const [visible, setVisible] = useState(false);
   const [ready, setReady] = useState(false);
+  // Track sources/folders/filenames (NOT positions) so Hero re-renders
+  // when Button is edited, but we don't churn on drags. IntersectionObserver
+  // keeps off-screen tiles unmounted, so even when this fires it only hits
+  // visible tiles.
+  const modulesSig = useProjectModulesSignature();
   const assetsVersion = useAssets(
     (s) => s.order.length + "|" + s.order.join(","),
   );
+  // Topbar refresh — keying off this remounts every visible tile's iframe.
+  const refreshNonce = useCanvas((s) => s.refreshNonce);
 
   // IntersectionObserver — once the tile pokes into the viewport, flip
   // `visible` and mount the iframe. We never un-flip; unmounting would
@@ -213,6 +226,13 @@ function LibraryTile({
     sandboxRef.current?.setTokensCss(tokensCss);
   }, [ready, tokensCss]);
 
+  // Reset the ready flag when the user hits Topbar refresh — the iframe
+  // remounts (we key it on the same nonce) and announces ready again.
+  useEffect(() => {
+    if (refreshNonce === 0) return;
+    setReady(false);
+  }, [refreshNonce]);
+
   // Thumbnails flip with the app theme so the library faithfully reflects
   // what the user will see on the canvas. Pre-ready-safe via the Sandbox
   // handle's buffer — a tile that mounts while we're in dark mode boots
@@ -227,14 +247,18 @@ function LibraryTile({
     let cancelled = false;
     (async () => {
       const resolved = resolveAssets(component.source);
-      const res = await bundle(resolved);
+      const modules = buildProjectModules(useProject.getState().components);
+      const res = await bundle(resolved, {
+        entryPath: virtualPathFor(component),
+        modules,
+      });
       if (cancelled) return;
       if (res.ok) sandboxRef.current?.render(res.code);
     })();
     return () => {
       cancelled = true;
     };
-  }, [ready, component.source, assetsVersion]);
+  }, [ready, component.id, component.source, modulesSig, assetsVersion]);
 
   /** Drag-out: mirrors the primitive payload so the canvas drop handler
    *  can insert the component as a JSX reference. We emit a
@@ -297,6 +321,7 @@ function LibraryTile({
             }}
           >
             <Sandbox
+              key={refreshNonce}
               ref={sandboxRef}
               onReady={() => setReady(true)}
               className="border-0"

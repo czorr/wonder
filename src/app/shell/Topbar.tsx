@@ -8,7 +8,6 @@ import { useTheme } from "@/store/theme";
 // the Topbar doesn't re-render when layout changes — it doesn't show any
 // layout state directly (that UI moved into the sidebar headers themselves).
 import { useLayout } from "@/store/layout";
-import { removeClassesAtPath } from "@/ast/tailwind";
 import {
   actionNewProject,
   actionOpenProject,
@@ -28,14 +27,13 @@ export function Topbar() {
   const togglePlayMode = useCanvas((s) => s.togglePlayMode);
   const breakpoint = useCanvas((s) => s.breakpoint);
   const setBreakpoint = useCanvas((s) => s.setBreakpoint);
+  const refresh = useCanvas((s) => s.refresh);
   const theme = useTheme((s) => s.theme);
   const toggleTheme = useTheme((s) => s.toggleTheme);
 
   const components = useProject((s) => s.components);
-  const order = useProject((s) => s.order);
   const selectedId = useProject((s) => s.selectedComponentId);
   const activeTab = useProject((s) => s.activeTab);
-  const setSource = useProject((s) => s.setSource);
   const undo = useProject((s) => s.undo);
   const redo = useProject((s) => s.redo);
   const chatOpen = useChat((s) => s.chatOpen);
@@ -44,21 +42,6 @@ export function Topbar() {
   // (We intentionally don't use canUndo/canRedo getters — those wouldn't trigger re-renders.)
   const pastLen = useProject((s) => s.past.length);
   const futureLen = useProject((s) => s.future.length);
-
-  const resetSizes = () => {
-    for (const id of order) {
-      const c = components[id];
-      if (!c) continue;
-      try {
-        const next = removeClassesAtPath(c.source, "0", (cls) =>
-          /^w-\[.*\]$/.test(cls) || /^h-\[.*\]$/.test(cls),
-        );
-        if (next !== c.source) setSource(id, next);
-      } catch (e) {
-        console.error(e);
-      }
-    }
-  };
 
   // Keyboard shortcuts.
   //
@@ -274,8 +257,8 @@ export function Topbar() {
         </div>
 
         <button
-          onClick={resetSizes}
-          title="Reset frame sizes (remove w-[]/h-[] on roots)"
+          onClick={refresh}
+          title="Refresh — remount every preview iframe (clears stale bundles, fresh importmap)"
           className="grid size-7 place-items-center rounded-lg border border-stroke bg-panel text-ink-muted hover:text-ink transition"
         >
           <AppIcon name="Refresh" size={13} />

@@ -4,6 +4,11 @@ import { useProject } from "@/store/project";
 import { useCanvas } from "@/store/canvas";
 import { Sandbox, type SandboxHandle } from "@/sandbox/Sandbox";
 import { bundle } from "@/sandbox/bundler";
+import {
+  buildProjectModules,
+  useProjectModulesSignature,
+  virtualPathFor,
+} from "@/sandbox/projectModules";
 
 const GRADIENTS = [
   "from-violet-950 via-indigo-900 to-sky-900",
@@ -30,8 +35,22 @@ export function PreviewOverlay() {
 
   const sandboxRef = useRef<SandboxHandle>(null);
   const [ready, setReady] = useState(false);
+  // Re-bundle when sources change (NOT positions/sizes) so a Hero showing
+  // here updates if Button is edited mid-preview.
+  const modulesSig = useProjectModulesSignature();
+  // Topbar refresh — keying off this remounts the preview iframe.
+  const refreshNonce = useCanvas((s) => s.refreshNonce);
 
   const component = components[order[index]];
+
+  // The same nonce-bump should reset local state so the new iframe gets
+  // a clean ready/rendered cycle. Skipping the initial mount (nonce 0).
+  useEffect(() => {
+    if (refreshNonce === 0) return;
+    setReady(false);
+    setRendered(false);
+    setContentSize(null);
+  }, [refreshNonce]);
 
   // Reset to selected component when overlay opens
   useEffect(() => {
@@ -48,12 +67,16 @@ export function PreviewOverlay() {
     setRendered(false);
     setContentSize(null);
     let cancelled = false;
-    bundle(component.source).then((res) => {
+    const modules = buildProjectModules(useProject.getState().components);
+    bundle(component.source, {
+      entryPath: virtualPathFor(component),
+      modules,
+    }).then((res) => {
       if (cancelled) return;
       if (res.ok) sandboxRef.current?.render(res.code);
     });
     return () => { cancelled = true; };
-  }, [previewOpen, ready, component]);
+  }, [previewOpen, ready, component, modulesSig]);
 
   useEffect(() => {
     if (!previewOpen) return;
@@ -154,6 +177,7 @@ export function PreviewOverlay() {
             }
           >
             <Sandbox
+              key={refreshNonce}
               ref={sandboxRef}
               onReady={() => setReady(true)}
               onRendered={() => setRendered(true)}

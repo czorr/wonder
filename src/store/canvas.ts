@@ -46,6 +46,14 @@ type CanvasState = {
    * classes. See `Breakpoint` for the full semantics.
    */
   breakpoint: Breakpoint;
+  /**
+   * Monotonic counter — every call to `refresh()` bumps it. Frames key
+   * their iframes off this nonce, so bumping it remounts every Sandbox
+   * cleanly: fresh import map, fresh esbuild blob URL, fresh DOM. Use when
+   * a hot-reload gets stuck (cached blob, stale assets, half-bundled
+   * source) and the user just wants to nuke and reload.
+   */
+  refreshNonce: number;
 
   setZoom: (z: number | ((prev: number) => number)) => void;
   setPan: (p: { x: number; y: number } | ((prev: { x: number; y: number }) => { x: number; y: number })) => void;
@@ -59,6 +67,9 @@ type CanvasState = {
   setPlayMode: (on: boolean) => void;
   togglePlayMode: () => void;
   setBreakpoint: (bp: Breakpoint) => void;
+  /** Force-remount every Sandbox iframe on the canvas (and the library /
+   *  preview thumbnails). The cheapest hammer when something looks stale. */
+  refresh: () => void;
 };
 
 const ZOOM_MIN = 0.1;
@@ -87,6 +98,7 @@ export const useCanvas = create<CanvasState>((set) => ({
   // the 99% case for new components. Flipping to `md`/`lg`/etc. is an
   // explicit opt-in via the Topbar.
   breakpoint: "base",
+  refreshNonce: 0,
 
   setTool(t) {
     set({ tool: t });
@@ -130,5 +142,8 @@ export const useCanvas = create<CanvasState>((set) => ({
   },
   closePreview() {
     set({ previewOpen: false });
+  },
+  refresh() {
+    set((s) => ({ refreshNonce: s.refreshNonce + 1 }));
   },
 }));

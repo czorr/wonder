@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Sandbox, type SandboxHandle } from "@/sandbox/Sandbox";
 import { bundle } from "@/sandbox/bundler";
 import { resolveAssets } from "@/sandbox/assetResolver";
+import {
+  buildProjectModules,
+  useProjectModulesSignature,
+  virtualPathFor,
+} from "@/sandbox/projectModules";
 import { useAssets } from "@/store/assets";
 import { HOT_RELOAD_DEBOUNCE_MS } from "@/constants";
 import { useProject, type WonderComponent } from "@/store/project";
@@ -61,6 +66,11 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
   // hands event handling to the component itself so :hover/:focus/:active
   // CSS states and onClick handlers behave as they would in production.
   const playMode = useCanvas((s) => s.playMode);
+  // Topbar refresh button bumps this counter — we key the Sandbox off it so
+  // pressing refresh remounts the iframe (fresh blob URL, fresh importmap,
+  // fresh DOM). Local state (`ready`, `size`, `err`) gets reset alongside
+  // through the effects below, which all depend on the same nonce.
+  const refreshNonce = useCanvas((s) => s.refreshNonce);
   // Theme flows into the iframe's <html> so every `dark:*` utility in the
   // user's component fires in sync with the chrome's dark mode.
   const theme = useTheme((s) => s.theme);
@@ -81,11 +91,35 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
     sandboxRef.current?.setTokensCss(tokensCss);
   }, [tokensCss, ready]);
 
-  // Re-bundle whenever the component source OR the asset catalogue changes.
+  // When the user hits refresh in the Topbar, we remount the iframe via a
+  // `key` change below. Local state from the previous mount (ready flag,
+  // last-reported size, errors, current selection) is stale and would make
+  // downstream effects target a dead iframe — reset them so the new iframe
+  // hands us a clean slate via its own `onReady` / `onSize` callbacks.
+  useEffect(() => {
+    if (refreshNonce === 0) return; // initial mount — nothing to reset
+    setReady(false);
+    setErr(null);
+    setSize(null);
+    setSel(null);
+  }, [refreshNonce]);
+
+  // Re-bundle whenever ANY project component's source changes — not just the
+  // entry's. A frame rendering `Hero` that imports `Button` needs to refresh
+  // when `Button.tsx` is edited, otherwise the live link is one-way (parent
+  // updates show, child updates don't).
+  //
+  // We use `useProjectModulesSignature` (NOT `state.components` directly) on
+  // purpose: the components object identity churns on every drag/resize tick
+  // because of `moveFrame`/`resizeFrame`, and bundling on every pixel of
+  // motion is wasteful. The signature only changes when source/folder/
+  // filename mutates, so unrelated mutations don't trigger this effect.
+  //
   // Watching `assetsVersion` (a derived stamp from the assets store) means
   // a just-uploaded image flows through to the live preview without the
   // user having to touch the source — the pre-bundle asset resolver re-
   // runs and inlines the new data URL.
+  const modulesSig = useProjectModulesSignature();
   const assetsVersion = useAssets(
     (s) => s.order.length + "|" + s.order.join(","),
   );
@@ -94,7 +128,14 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
     const id = window.setTimeout(async () => {
       setErr(null);
       const resolved = resolveAssets(component.source);
-      const res = await bundle(resolved);
+      // Pull the latest components inline so we always bundle against the
+      // current store snapshot — subscribing reactively would re-run on
+      // drag, which we explicitly want to avoid.
+      const modules = buildProjectModules(useProject.getState().components);
+      const res = await bundle(resolved, {
+        entryPath: virtualPathFor(component),
+        modules,
+      });
       if (!res.ok) {
         setErr(res.error);
         return;
@@ -102,7 +143,7 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
       sandboxRef.current?.render(res.code, propValues ?? {});
     }, HOT_RELOAD_DEBOUNCE_MS);
     return () => window.clearTimeout(id);
-  }, [component.source, ready, assetsVersion]);
+  }, [component.id, component.source, modulesSig, ready, assetsVersion, propValues]);
 
   useEffect(() => {
     if (!ready) return;
@@ -168,14 +209,29 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
     }
   };
 
+  // When the bundle errors out before rendering anything, the iframe
+  // reports a near-zero content size (often 1×1) and the frame collapses
+  // to that — the absolutely-positioned error pre then has nowhere to
+  // draw and the user just sees a tiny dot. Pin the frame to the
+  // component's intrinsic size (or a readable default) while an error is
+  // surfacing so the message is always legible.
+  const ERROR_FALLBACK_W = 480;
+  const ERROR_FALLBACK_H = 240;
+  const frameW = err
+    ? Math.max(size?.w ?? 0, component.width || ERROR_FALLBACK_W)
+    : size?.w;
+  const frameH = err
+    ? Math.max(size?.h ?? 0, component.height || ERROR_FALLBACK_H)
+    : size?.h;
+
   return (
     <div
       className="absolute"
       style={{
         left: component.x,
         top: component.y,
-        width: size?.w,
-        height: size?.h,
+        width: frameW,
+        height: frameH,
       }}
       onMouseDown={(e) => {
         // In play mode, mousedowns on the wrapper belong to the component —
@@ -197,12 +253,20 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
       >
         <span>{component.name}</span>
         <span className={selected ? "opacity-80" : "text-ink-faint"}>
-          {size ? `${Math.round(size.w)} × ${Math.round(size.h)}` : ""}
+          {err
+            ? "error"
+            : size
+              ? `${Math.round(size.w)} × ${Math.round(size.h)}`
+              : ""}
         </span>
       </div>
       )}
       <div className="relative h-full w-full">
         <Sandbox
+          // Keying on the refresh nonce remounts the iframe whenever the
+          // user hits Topbar refresh. Cheaper than diff'ing every cached
+          // bit of runtime state.
+          key={refreshNonce}
           ref={sandboxRef}
           onReady={() => setReady(true)}
           onError={(m) => setErr(m)}
