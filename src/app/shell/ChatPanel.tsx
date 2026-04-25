@@ -166,9 +166,15 @@ function MessageList({ session }: { session: Session | null }) {
   }
 
   return (
+    // `overflow-x-hidden` is the safety net: even if a bubble's child
+    // misbehaves and tries to push wider than the column, the scroller
+    // refuses to scroll horizontally — only vertically. Combined with
+    // `min-w-0` on the column it lets long unbreakable strings inside
+    // bubbles (file paths, URLs) fall back to wrapping rather than
+    // expanding the panel.
     <div
       ref={scrollerRef}
-      className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3"
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden px-3 py-3"
     >
       {messages.map((m) => (
         <MessageBubble key={m.id} message={m} />
@@ -177,21 +183,101 @@ function MessageList({ session }: { session: Session | null }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Bubble content rendering
+//
+// Splits the message body on ```...``` fenced code blocks. Plain text uses
+// `whitespace-pre-wrap` + `break-words` + `overflow-wrap: anywhere` so long
+// unbreakable strings (paths, URLs, identifiers) wrap instead of pushing
+// the bubble wider than its column. Code blocks render in a `<pre>` with
+// `overflow-x-auto` so the horizontal scroll stays INSIDE the bubble and
+// never reaches the panel.
+//
+// We don't pull a markdown lib for this — fenced blocks are the only
+// thing we need to handle specially today, and a 30-line splitter avoids
+// the bundle weight.
+// ---------------------------------------------------------------------------
+
+type Segment = { kind: "text"; value: string } | { kind: "code"; value: string };
+
+function splitFences(src: string): Segment[] {
+  const out: Segment[] = [];
+  // Allow optional language tag after the opening fence (```ts, ```tsx, …).
+  const re = /```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src))) {
+    if (m.index > lastIndex) {
+      out.push({ kind: "text", value: src.slice(lastIndex, m.index) });
+    }
+    out.push({ kind: "code", value: m[2] });
+    lastIndex = m.index + m[0].length;
+  }
+  if (lastIndex < src.length) {
+    out.push({ kind: "text", value: src.slice(lastIndex) });
+  }
+  return out;
+}
+
+function BubbleContent({ content, isUser }: { content: string; isUser: boolean }) {
+  const segments = useMemo(() => splitFences(content), [content]);
+  return (
+    <>
+      {segments.map((s, i) =>
+        s.kind === "code" ? (
+          <pre
+            key={i}
+            className={
+              "my-1.5 overflow-x-auto rounded-lg px-2.5 py-2 text-[11px] leading-snug font-mono " +
+              (isUser
+                ? "bg-black/25 text-white/95 ring-1 ring-white/10"
+                : "bg-ink/5 text-ink ring-1 ring-stroke")
+            }
+          >
+            {s.value.replace(/\n+$/, "")}
+          </pre>
+        ) : (
+          <span
+            key={i}
+            className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
+          >
+            {s.value}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
   return (
-    <div className={"flex flex-col gap-1 " + (isUser ? "items-end" : "items-start")}>
+    // `min-w-0` on this column lets the inner bubble's `max-w` actually
+    // take effect inside a flex parent (without it, the column would be
+    // sized to its widest child which defeats max-w).
+    <div
+      className={
+        "flex min-w-0 flex-col gap-1 " + (isUser ? "items-end" : "items-start")
+      }
+    >
       <div
         className={
-          "max-w-[90%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[12.5px] leading-relaxed " +
+          // Pillowy & generously rounded. `rounded-3xl` is the dominant
+          // silhouette; we trim the speaker-side corner with `rounded-*-xl`
+          // so it still reads as a directional bubble without looking
+          // squared off. No fancy ring/gradient hairlines — clean fill,
+          // light shadow, that's it.
+          "max-w-[88%] rounded-3xl px-3.5 py-2 text-[12.5px] leading-relaxed " +
           (isUser
-            ? "bg-accent text-white"
-            : "bg-panel-soft text-ink")
+            ? "rounded-br-xl bg-accent text-white shadow-sm"
+            : "rounded-bl-xl bg-panel-soft text-ink")
         }
       >
-        {message.content || (
-          <span className="inline-flex items-center gap-1 text-ink-faint">
-            <Dot /> <Dot delay={120} /> <Dot delay={240} />
+        {message.content ? (
+          <BubbleContent content={message.content} isUser={isUser} />
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-ink-faint">
+            <Dot /> <Dot delay={140} /> <Dot delay={280} />
           </span>
         )}
       </div>
@@ -200,9 +286,11 @@ function MessageBubble({ message }: { message: Message }) {
 }
 
 function Dot({ delay = 0 }: { delay?: number }) {
+  // Slightly larger + a colored core so the streaming-pending state reads
+  // as "thinking" rather than "loading spinner".
   return (
     <span
-      className="inline-block size-1.5 animate-pulse rounded-full bg-ink-faint"
+      className="inline-block size-1.5 animate-pulse rounded-full bg-accent/70"
       style={{ animationDelay: `${delay}ms` }}
     />
   );
