@@ -225,6 +225,8 @@ function ChatInput({ session }: { session: Session | null }) {
   const streaming = useChat((s) => s.streaming);
   const stop = useChat((s) => s.stop);
   const focusRequestId = useChat((s) => s.focusRequestId);
+  const prefillRequestId = useChat((s) => s.prefillRequestId);
+  const draftPrefill = useChat((s) => s.draftPrefill);
   const composerTags = useChat((s) => s.composerTags);
   const removeComposerTag = useChat((s) => s.removeComposerTag);
 
@@ -240,6 +242,24 @@ function ChatInput({ session }: { session: Session | null }) {
     el.focus();
     el.setSelectionRange(0, el.value.length);
   }, [focusRequestId]);
+
+  // External prefill (e.g. "Fix with Wonder" button on an errored frame).
+  // The store bumps prefillRequestId together with draftPrefill — we copy
+  // into local state and place the cursor at the END of the prefilled text
+  // so the user can keep typing to add context (vs. select-all on ⌘L which
+  // is meant to clobber).
+  useEffect(() => {
+    if (prefillRequestId === 0) return;
+    setValue(draftPrefill);
+    // Microtask so React commits the new `value` before we move the caret.
+    queueMicrotask(() => {
+      const el = ref.current;
+      if (!el) return;
+      el.focus();
+      const end = draftPrefill.length;
+      el.setSelectionRange(end, end);
+    });
+  }, [prefillRequestId, draftPrefill]);
 
   // Auto-grow textarea up to 160px.
   useEffect(() => {

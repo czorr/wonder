@@ -90,6 +90,17 @@ type ChatStore = {
    * Avoids prop drilling a ref across the layout.
    */
   focusRequestId: number;
+  /**
+   * Text to drop into the composer the next time `prefillRequestId` ticks.
+   * Used by surfaces like the "Fix with Wonder" button on a build-error
+   * frame: they call `prefillDraft(text)` and the input picks it up via an
+   * effect. We carry the text + a counter (instead of a one-shot setter on
+   * the input ref) so the prefill survives the chat panel being closed at
+   * the time of the call — the panel mounts, the effect fires, the text
+   * lands. Same pattern as `focusRequestId`, just for content.
+   */
+  draftPrefill: string;
+  prefillRequestId: number;
 
   // --- actions ---
   setSidebarTab: (tab: SidebarTab) => void;
@@ -98,6 +109,14 @@ type ChatStore = {
   openProfile: () => void;
   closeProfile: () => void;
   requestFocus: () => void;
+  /**
+   * Prefill the composer with `text` and open the chat panel. The composer
+   * picks the text up via a `prefillRequestId` effect and places the cursor
+   * at the end so the user can keep typing to add context. Existing draft
+   * (if any) is replaced — callers should treat this as a destructive UX
+   * action invoked from explicit user intent (button click).
+   */
+  prefillDraft: (text: string) => void;
 
   newSession: () => string;
   selectSession: (id: string) => void;
@@ -151,6 +170,8 @@ export const useChat = create<ChatStore>((set, get) => ({
   chatOpen: false,
   profileOpen: false,
   focusRequestId: 0,
+  draftPrefill: "",
+  prefillRequestId: 0,
 
   setSidebarTab(tab) {
     set({ sidebarTab: tab });
@@ -169,6 +190,16 @@ export const useChat = create<ChatStore>((set, get) => ({
   },
   requestFocus() {
     set((s) => ({ focusRequestId: s.focusRequestId + 1 }));
+  },
+  prefillDraft(text) {
+    // Open the chat AND bump the prefill counter atomically — if we split
+    // these into two `set` calls the input would observe an open panel
+    // before the text arrives and briefly look empty.
+    set((s) => ({
+      chatOpen: true,
+      draftPrefill: text,
+      prefillRequestId: s.prefillRequestId + 1,
+    }));
   },
 
   newSession() {

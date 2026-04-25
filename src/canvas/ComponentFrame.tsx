@@ -20,6 +20,7 @@ import { setTextAtPath } from "@/ast/text";
 import { getClassNameAtPath, setClassAtPath } from "@/ast/tailwind";
 import { insertChildAtPath } from "@/ast/insert";
 import { PixelGridLoader } from "@/canvas/PixelGridLoader";
+import { AppIcon } from "@/app/icons";
 
 type Props = {
   component: WonderComponent;
@@ -346,9 +347,32 @@ export function ComponentFrame({ component, selected, zoom }: Props) {
           }}
         />
         {err ? (
-          <pre className="absolute inset-2 overflow-auto rounded-md border border-red-300 bg-red-50 p-2 text-[10px] text-red-700">
-            {err}
-          </pre>
+          // Stack pre + button in a column so the button is always visible
+          // even when the error text is long enough to scroll. The button
+          // tags this component as the chat scope and prefills the composer
+          // with a structured prompt — the user reviews and presses Enter.
+          <div className="absolute inset-2 flex flex-col gap-2">
+            <pre className="min-h-0 flex-1 overflow-auto rounded-md border border-red-300 bg-red-50 p-2 text-[10px] text-red-700">
+              {err}
+            </pre>
+            <button
+              onClick={() => {
+                const chat = useChat.getState();
+                // Tag this component so the agent gets it as the focused
+                // scope on the next turn (its full source is inlined in the
+                // system prompt instead of just listed in the manifest).
+                chat.addComposerTag(component.id);
+                chat.prefillDraft(
+                  `Fix this build error in \`${component.filename}\`:\n\n\`\`\`\n${err}\n\`\`\``,
+                );
+              }}
+              className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-md bg-accent px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:brightness-105"
+              title="Open chat with the error pre-filled — Wonder will attempt the fix"
+            >
+              <AppIcon name="Sparkles" size={12} />
+              Fix with Wonder
+            </button>
+          </div>
         ) : null}
         {selected && sel && !playMode ? <SelectionOverlay sel={sel} /> : null}
         {isBusy ? <BusyOverlay /> : null}
